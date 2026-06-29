@@ -104,4 +104,5 @@ InitTestScene*.unity*
 
 # Auto-generated cache in Assets folder
 /[Aa]ssets/[Ss]ceneDependencyCache*
-/[Aa]ssets/
+/[Aa]ssets/AtmosphericHouse/
+/[Aa]ssets/First Person Imports/
