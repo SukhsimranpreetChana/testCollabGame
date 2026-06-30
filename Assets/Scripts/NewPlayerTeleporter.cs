@@ -1,29 +1,54 @@
 using UnityEngine;
+using VHS;
 
 public class NewPlayerTeleporter : MonoBehaviour
 {
     public Transform TeleportZoneObject;
+    public CameraController cameraController;
+
+    [Header("Door Fix")]
+    public AutoDoor doorToClose;
+
+    private bool canTeleport = true;
 
     private void OnTriggerEnter(Collider other)
     {
-        if (other.CompareTag("Player"))
-        {
-            Vector3 localOffest = transform.InverseTransformPoint(other.transform.position);
+        if (!canTeleport || !other.CompareTag("Player")) return;
 
-            Quaternion relativeRotation = TeleportZoneObject.rotation * Quaternion.Inverse(transform.rotation);
-            
-            CharacterController cc = other.GetComponent<CharacterController>();
+        canTeleport = false;
 
-            if(cc != null)
-            {
-                cc.enabled = false;
+        CharacterController cc = other.GetComponent<CharacterController>();
 
-                other.transform.position = TeleportZoneObject.TransformPoint(localOffest);
+        Vector3 localOffset = transform.InverseTransformPoint(other.transform.position);
 
-                other.transform.rotation = relativeRotation * other.transform.rotation;
+        Quaternion relativeRotation =
+            Quaternion.Inverse(transform.rotation) *
+            cameraController.transform.rotation;
 
-                cc.enabled = true;
-            }
-        }
+        if (cc != null)
+            cc.enabled = false;
+
+        other.transform.position = TeleportZoneObject.TransformPoint(localOffset);
+
+        Quaternion newRotation =
+            TeleportZoneObject.rotation * relativeRotation;
+
+        float newYaw = newRotation.eulerAngles.y;
+
+        other.transform.rotation = Quaternion.Euler(0f, newYaw, 0f);
+        cameraController.TeleportSetYaw(newYaw);
+
+        if (doorToClose != null)
+            doorToClose.ForceClose();
+
+        if (cc != null)
+            cc.enabled = true;
+
+        Invoke(nameof(ResetTeleport), 0.25f);
+    }
+
+    private void ResetTeleport()
+    {
+        canTeleport = true;
     }
 }
