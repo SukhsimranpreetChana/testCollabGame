@@ -1,0 +1,11 @@
+Model Information:
+* title:	Nortel Vista 200 Corded Landline Telephone
+* source:	https://sketchfab.com/3d-models/nortel-vista-200-corded-landline-telephone-aa47a7474cdd4e1cbf21b2ceceeabf47
+* author:	Jordan F (https://sketchfab.com/JordanF)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Nortel Vista 200 Corded Landline Telephone" (https://sketchfab.com/3d-models/nortel-vista-200-corded-landline-telephone-aa47a7474cdd4e1cbf21b2ceceeabf47) by Jordan F (https://sketchfab.com/JordanF) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

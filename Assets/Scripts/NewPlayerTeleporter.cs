@@ -6,8 +6,11 @@ public class NewPlayerTeleporter : MonoBehaviour
     public Transform TeleportZoneObject;
     public CameraController cameraController;
 
-    [Header("Door Fix")]
     public AutoDoor doorToClose;
+
+    public int loopCount = 1;
+
+    public AudioSource phoneRinging;
 
     private bool canTeleport = true;
 
@@ -44,7 +47,27 @@ public class NewPlayerTeleporter : MonoBehaviour
         if (cc != null)
             cc.enabled = true;
 
+        // Count completed hallway loops
+        loopCount++;
+        Debug.Log($"Loop #{loopCount}");
+
         Invoke(nameof(ResetTeleport), 0.25f);
+    }
+
+    public void Update()
+    {
+        if (loopCount == 2)
+        {
+            if (phoneRinging != null && !phoneRinging.isPlaying)
+                phoneRinging.Play();
+        }
+
+        // Stop audio on loop 3
+        if (loopCount == 3)
+        {
+            if (phoneRinging != null && phoneRinging.isPlaying)
+                phoneRinging.Stop();
+        }
     }
 
     private void ResetTeleport()

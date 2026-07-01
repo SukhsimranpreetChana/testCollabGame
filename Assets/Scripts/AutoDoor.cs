@@ -2,7 +2,7 @@ using UnityEngine;
 
 public class AutoDoor : MonoBehaviour
 {
-    public Transform door;              // The actual door mesh/pivot
+    public Transform door;          
     public Vector3 closedRotation;
     public Vector3 openRotation = new Vector3(0, 90, 0);
 
@@ -11,6 +11,8 @@ public class AutoDoor : MonoBehaviour
 
     private bool playerNear = false;
     private float closeTimer = 0f;
+
+    public AudioSource doorSfx;
 
     private void Start()
     {
@@ -46,6 +48,7 @@ public class AutoDoor : MonoBehaviour
         if (other.CompareTag("Player"))
         {
             playerNear = true;
+            doorSfx.Play();
         }
     }
 
