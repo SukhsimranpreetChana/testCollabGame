@@ -5,12 +5,8 @@ public class NewPlayerTeleporter : MonoBehaviour
 {
     public Transform TeleportZoneObject;
     public CameraController cameraController;
-
     public AutoDoor doorToClose;
-
-    public int loopCount = 1;
-
-    public AudioSource phoneRinging;
+    public HallwayLoopManager loopManager;
 
     private bool canTeleport = true;
 
@@ -28,14 +24,11 @@ public class NewPlayerTeleporter : MonoBehaviour
             Quaternion.Inverse(transform.rotation) *
             cameraController.transform.rotation;
 
-        if (cc != null)
-            cc.enabled = false;
+        if (cc != null) cc.enabled = false;
 
         other.transform.position = TeleportZoneObject.TransformPoint(localOffset);
 
-        Quaternion newRotation =
-            TeleportZoneObject.rotation * relativeRotation;
-
+        Quaternion newRotation = TeleportZoneObject.rotation * relativeRotation;
         float newYaw = newRotation.eulerAngles.y;
 
         other.transform.rotation = Quaternion.Euler(0f, newYaw, 0f);
@@ -44,30 +37,12 @@ public class NewPlayerTeleporter : MonoBehaviour
         if (doorToClose != null)
             doorToClose.ForceClose();
 
-        if (cc != null)
-            cc.enabled = true;
+        if (cc != null) cc.enabled = true;
 
-        // Count completed hallway loops
-        loopCount++;
-        Debug.Log($"Loop #{loopCount}");
+        if (loopManager != null)
+            loopManager.NextLoop();
 
         Invoke(nameof(ResetTeleport), 0.25f);
-    }
-
-    public void Update()
-    {
-        if (loopCount == 2)
-        {
-            if (phoneRinging != null && !phoneRinging.isPlaying)
-                phoneRinging.Play();
-        }
-
-        // Stop audio on loop 3
-        if (loopCount == 3)
-        {
-            if (phoneRinging != null && phoneRinging.isPlaying)
-                phoneRinging.Stop();
-        }
     }
 
     private void ResetTeleport()
