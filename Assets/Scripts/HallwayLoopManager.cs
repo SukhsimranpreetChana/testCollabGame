@@ -22,6 +22,9 @@ public class HallwayLoopManager : MonoBehaviour
     public AudioSource cryingSfx;
     public AudioSource chaseMusic;
 
+    [Header("Phone Audio Source")]
+    public AudioSource phoneVoiceSource;
+
     [Header("TV Audio Source")]
     public AudioSource tvAudioSource;
 
@@ -29,6 +32,7 @@ public class HallwayLoopManager : MonoBehaviour
     public AudioClip normalReport;
     public AudioClip secondReport;
     public AudioClip behindYou;
+    public AudioClip answerThePhone;
     public AudioClip glitchyReport;
     public AudioClip questioning;
     public AudioClip allDead;
@@ -38,8 +42,6 @@ public class HallwayLoopManager : MonoBehaviour
 
     [Header("Loop 3 Forced Look Behind")]
     public bool forceLookBehind = true;
-    public float lookBehindDuration = 5f;
-    public float lookBehindSmoothSpeed = 0.125f;
     public Transform monsterLookTarget;
     public Behaviour playerMovementScript;
     public CameraController cameraController;
@@ -48,6 +50,7 @@ public class HallwayLoopManager : MonoBehaviour
     public GameObject drugs;
     public GameObject missingPeoplePhotos;
     public GameObject hallwayFigure;
+    public GameObject loop3Monster;
     public GameObject monster;
     public GameObject furnitureBlockade;
     public GameObject dirtyWalls;
@@ -84,10 +87,13 @@ public class HallwayLoopManager : MonoBehaviour
 
     private Coroutine backLightFlickerCoroutine;
     private Coroutine loop3BroadcastCoroutine;
-    private Coroutine forcedLookCoroutine;
+    private AudioClip originalPhoneRingingClip;
 
     private void Start()
     {
+        if (phoneRinging != null)
+            originalPhoneRingingClip = phoneRinging.clip;
+
         ApplyLoop();
     }
 
@@ -98,12 +104,6 @@ public class HallwayLoopManager : MonoBehaviour
         chaseStarted = false;
         playerReachedFigure = false;
         waitingForLookBehind = false;
-
-        if (forcedLookCoroutine != null)
-        {
-            StopCoroutine(forcedLookCoroutine);
-            forcedLookCoroutine = null;
-        }
 
         if (playerMovementScript != null)
             playerMovementScript.enabled = true;
@@ -182,8 +182,7 @@ public class HallwayLoopManager : MonoBehaviour
 
         LockDoor();
 
-        if (phoneRinging != null)
-            phoneRinging.Play();
+        PlayPhoneRinging();
     }
 
     private void Loop3()
@@ -206,15 +205,15 @@ public class HallwayLoopManager : MonoBehaviour
     {
         SetAllLights(false);
 
-        ShowTVOff();
-        StopTVAudio();
+        // Loop 4: TV stays on and tells the player to answer the phone.
+        ShowTVNews();
+        PlayTVClip(answerThePhone, false);
 
         SetActive(furnitureBlockade, true);
 
         LockDoor();
 
-        if (phoneRinging != null)
-            phoneRinging.Play();
+        PlayPhoneRinging();
     }
 
     private void Loop5()
@@ -250,6 +249,9 @@ public class HallwayLoopManager : MonoBehaviour
         if (phoneRinging != null)
             phoneRinging.Stop();
 
+        if (phoneVoiceSource != null)
+            phoneVoiceSource.Stop();
+
         if (loopCount == 2)
         {
             UnlockDoor();
@@ -257,7 +259,17 @@ public class HallwayLoopManager : MonoBehaviour
 
         if (loopCount == 4)
         {
-            SetAllLights(true);
+            // When the phone is answered, the hallway turns red.
+            // The TV stays visually on, but the questioning audio now comes from the phone.
+            SetActive(lightsOn, false);
+            SetActive(lightsOff, false);
+            SetActive(redLights, true);
+            SetActive(backLightOff, false);
+
+            ShowTVNews();
+            StopTVAudio();
+            PlayPhoneClip(questioning, false);
+
             SetActive(bloodWalls, true);
             UnlockDoor();
         }
@@ -276,7 +288,10 @@ public class HallwayLoopManager : MonoBehaviour
         StopTVAudio();
         SetAllLights(false);
 
-        Debug.Log("Loop 3: Player got too close to the figure.");
+        // New: when the lights go out, the hallway figure disappears.
+        SetActive(hallwayFigure, false);
+
+        Debug.Log("Loop 3: Player got too close to the figure. Lights out, figure hidden.");
     }
 
     public void PlayerReachedDoorLoop3()
@@ -285,6 +300,7 @@ public class HallwayLoopManager : MonoBehaviour
             return;
 
         SetAllLights(true);
+        SetActive(loop3Monster, true);
 
         ShowTVNews();
         LockDoor();
@@ -293,7 +309,8 @@ public class HallwayLoopManager : MonoBehaviour
 
         StartLoop3BroadcastInterruptions();
 
-        if (loop3ForcedLook != null)
+        // New: only start forced look once.
+        if (forceLookBehind && loop3ForcedLook != null)
             loop3ForcedLook.StartForcedLook();
 
         Debug.Log("Loop 3: Lights back on. Broadcast now gets interrupted by look behind you.");
@@ -305,8 +322,6 @@ public class HallwayLoopManager : MonoBehaviour
         {
             if (!waitingForLookBehind)
                 return;
-
-            StopForcedLookBehind();
 
             if (playerMovementScript != null)
                 playerMovementScript.enabled = true;
@@ -352,50 +367,6 @@ public class HallwayLoopManager : MonoBehaviour
         UnlockDoor();
 
         Debug.Log("Loop 6: Chase started. Door unlocked.");
-    }
-
-    private void StartForcedLookBehind()
-    {
-        StopForcedLookBehind();
-        forcedLookCoroutine = StartCoroutine(ForceLookBehindRoutine());
-    }
-
-    private void StopForcedLookBehind()
-    {
-        if (forcedLookCoroutine != null)
-        {
-            StopCoroutine(forcedLookCoroutine);
-            forcedLookCoroutine = null;
-        }
-    }
-
-    private IEnumerator ForceLookBehindRoutine()
-    {
-        if (playerMovementScript != null)
-            playerMovementScript.enabled = false;
-
-        if (cameraController != null)
-            cameraController.SetForceLooking(true);
-
-        float timer = 0f;
-
-        while (timer < lookBehindDuration)
-        {
-            timer += Time.deltaTime;
-
-            if (cameraController != null && monsterLookTarget != null)
-                cameraController.DriftLookToward(monsterLookTarget, lookBehindSmoothSpeed);
-
-            yield return null;
-        }
-
-        if (cameraController != null)
-            cameraController.SetForceLooking(false);
-
-        if (playerMovementScript != null)
-            playerMovementScript.enabled = true;
-
-        forcedLookCoroutine = null;
     }
 
     private void StartLoop3BroadcastInterruptions()
@@ -470,6 +441,7 @@ public class HallwayLoopManager : MonoBehaviour
             exitDoor.locked = false;
 
         SetActive(teleporter, true);
+        SetActive(furnitureBlockade, false);
     }
 
     private void ShowTVStatic()
@@ -491,6 +463,33 @@ public class HallwayLoopManager : MonoBehaviour
         SetActive(tvStatic, false);
         SetActive(tvNews, false);
         SetActive(tvOff, true);
+    }
+
+    private void PlayPhoneRinging()
+    {
+        if (phoneRinging == null)
+            return;
+
+        if (originalPhoneRingingClip != null)
+            phoneRinging.clip = originalPhoneRingingClip;
+
+        phoneRinging.loop = true;
+        phoneRinging.time = 0f;
+        phoneRinging.Play();
+    }
+
+    private void PlayPhoneClip(AudioClip clip, bool loop = false)
+    {
+        AudioSource source = phoneVoiceSource != null ? phoneVoiceSource : phoneRinging;
+
+        if (source == null || clip == null)
+            return;
+
+        source.Stop();
+        source.clip = clip;
+        source.loop = loop;
+        source.time = 0f;
+        source.Play();
     }
 
     private void PlayTVClip(AudioClip clip, bool loop = true)
@@ -574,7 +573,6 @@ public class HallwayLoopManager : MonoBehaviour
     {
         StopBackLightFlicker();
         StopLoop3BroadcastInterruptions();
-        StopForcedLookBehind();
 
         if (playerMovementScript != null)
             playerMovementScript.enabled = true;
@@ -586,6 +584,7 @@ public class HallwayLoopManager : MonoBehaviour
         SetActive(missingPeoplePhotos, false);
         SetActive(hallwayFigure, false);
         SetActive(monster, false);
+        SetActive(loop3Monster, false);
         SetActive(furnitureBlockade, false);
         SetActive(dirtyWalls, false);
         SetActive(bloodWalls, false);
@@ -609,6 +608,7 @@ public class HallwayLoopManager : MonoBehaviour
 
         StopAudio(rainSfx);
         StopAudio(phoneRinging);
+        StopAudio(phoneVoiceSource);
         StopAudio(cryingSfx);
         StopAudio(chaseMusic);
         StopTVAudio();
