@@ -1,5 +1,7 @@
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using System.Collections;
+using VHS;
 
 public class HallwayLoopManager : MonoBehaviour
 {
@@ -8,16 +10,39 @@ public class HallwayLoopManager : MonoBehaviour
 
     [Header("Door")]
     public AutoDoor exitDoor;
+    public ForcedLook loop3ForcedLook;
 
-    [Header("Audio")]
+    [Header("Loop Triggers")]
+    public FigureTrigger figureTrigger;
+    public DoorTrigger doorTrigger;
+
+    [Header("SFX")]
     public AudioSource rainSfx;
     public AudioSource phoneRinging;
     public AudioSource cryingSfx;
-    public AudioSource newsReportSfx;
-    public AudioSource pickUpPhoneSfx;
-    public AudioSource lookBehindYouSfx;
-    public AudioSource whyDidntYouAnswerSfx;
     public AudioSource chaseMusic;
+
+    [Header("TV Audio Source")]
+    public AudioSource tvAudioSource;
+
+    [Header("TV Audio Clips")]
+    public AudioClip normalReport;
+    public AudioClip secondReport;
+    public AudioClip behindYou;
+    public AudioClip glitchyReport;
+    public AudioClip questioning;
+    public AudioClip allDead;
+
+    [Header("Loop 3 TV Interruption")]
+    public float lookBehindInterruptDelay = 6f;
+
+    [Header("Loop 3 Forced Look Behind")]
+    public bool forceLookBehind = true;
+    public float lookBehindDuration = 5f;
+    public float lookBehindSmoothSpeed = 0.125f;
+    public Transform monsterLookTarget;
+    public Behaviour playerMovementScript;
+    public CameraController cameraController;
 
     [Header("Objects")]
     public GameObject drugs;
@@ -27,11 +52,10 @@ public class HallwayLoopManager : MonoBehaviour
     public GameObject furnitureBlockade;
     public GameObject dirtyWalls;
     public GameObject bloodWalls;
-    public GameObject normalFurniture;
     public GameObject finalEmptyHallway;
     public GameObject teleporter;
 
-    [Header("TV")]
+    [Header("TV Objects")]
     public GameObject tvStatic;
     public GameObject tvNews;
     public GameObject tvOff;
@@ -40,14 +64,27 @@ public class HallwayLoopManager : MonoBehaviour
     public GameObject lightsOn;
     public GameObject lightsOff;
     public GameObject redLights;
-    public GameObject flickeringBackLight;
+
+    [Header("Back Light")]
+    public GameObject backLightOn;
+    public GameObject backLightOff;
+    public float minTimeBetweenFlickers = 0f;
+    public float maxTimeBetweenFlickers = 5f;
+    public float minFlickerSpeed = 0.03f;
+    public float maxFlickerSpeed = 0.12f;
+    public int minFlickersPerBurst = 2;
+    public int maxFlickersPerBurst = 6;
 
     [Header("Ending")]
     public string endingSceneName;
 
-    private bool phoneAnswered = false;
-    private bool lookedBehind = false;
     private bool chaseStarted = false;
+    private bool playerReachedFigure = false;
+    private bool waitingForLookBehind = false;
+
+    private Coroutine backLightFlickerCoroutine;
+    private Coroutine loop3BroadcastCoroutine;
+    private Coroutine forcedLookCoroutine;
 
     private void Start()
     {
@@ -57,53 +94,66 @@ public class HallwayLoopManager : MonoBehaviour
     public void NextLoop()
     {
         loopCount++;
-        phoneAnswered = false;
-        lookedBehind = false;
+
         chaseStarted = false;
+        playerReachedFigure = false;
+        waitingForLookBehind = false;
+
+        if (forcedLookCoroutine != null)
+        {
+            StopCoroutine(forcedLookCoroutine);
+            forcedLookCoroutine = null;
+        }
+
+        if (playerMovementScript != null)
+            playerMovementScript.enabled = true;
+
+        if (cameraController != null)
+            cameraController.SetForceLooking(false);
+
+        if (figureTrigger != null)
+            figureTrigger.ResetTrigger();
+
+        if (doorTrigger != null)
+            doorTrigger.ResetTrigger();
 
         Debug.Log("Loop #" + loopCount);
-
         ApplyLoop();
     }
 
     private void ApplyLoop()
     {
-        StopAllLoopAudio();
+        StopAllAudio();
         ResetEverything();
 
         if (exitDoor != null)
             exitDoor.locked = false;
+
+        SetActive(teleporter, true);
 
         switch (loopCount)
         {
             case 1:
                 Loop1();
                 break;
-
             case 2:
                 Loop2();
                 break;
-
             case 3:
                 Loop3();
                 break;
-
             case 4:
                 Loop4();
                 break;
-
             case 5:
                 Loop5();
                 break;
-
             case 6:
                 Loop6();
                 break;
-
             case 7:
                 Loop7();
                 break;
-
             default:
                 Ending();
                 break;
@@ -112,8 +162,8 @@ public class HallwayLoopManager : MonoBehaviour
 
     private void Loop1()
     {
-        SetActive(lightsOn, true);
-        SetActive(tvStatic, true);
+        SetAllLights(true);
+        ShowTVStatic();
 
         if (rainSfx != null)
             rainSfx.Play();
@@ -121,61 +171,47 @@ public class HallwayLoopManager : MonoBehaviour
 
     private void Loop2()
     {
-        SetActive(lightsOn, true);
+        SetAllLights(true);
+        StartBackLightFlicker();
+
+        ShowTVNews();
+        PlayTVClip(normalReport, true);
+
         SetActive(drugs, true);
         SetActive(missingPeoplePhotos, true);
-        SetActive(tvNews, true);
-        SetActive(flickeringBackLight, true);
 
-        if (exitDoor != null)
-        {
-            exitDoor.locked = true;
-            SetActive(teleporter, false);
-        }
+        LockDoor();
 
         if (phoneRinging != null)
             phoneRinging.Play();
-
-        if (newsReportSfx != null)
-            newsReportSfx.Play();
-
-        InvokeRepeating(nameof(PlayPickUpPhone), 4f, 4f);
     }
 
     private void Loop3()
     {
-        SetActive(lightsOn, true);
+        SetAllLights(true);
+
+        ShowTVNews();
+        PlayTVClip(secondReport, true);
+
         SetActive(hallwayFigure, true);
         SetActive(dirtyWalls, true);
-        SetActive(tvNews, true);
 
-        if (exitDoor != null)
-        {
-            exitDoor.locked = true;
-            SetActive(teleporter, false);
-        }
-            
+        LockDoor();
 
         if (cryingSfx != null)
             cryingSfx.Play();
-
-        if (newsReportSfx != null)
-            newsReportSfx.Play();
-
-        InvokeRepeating(nameof(PlayLookBehindYou), 4f, 4f);
     }
 
     private void Loop4()
     {
-        SetActive(lightsOff, true);
-        SetActive(tvOff, true);
+        SetAllLights(false);
+
+        ShowTVOff();
+        StopTVAudio();
+
         SetActive(furnitureBlockade, true);
 
-        if (exitDoor != null)
-        {
-            exitDoor.locked = true;
-            SetActive(teleporter, false);
-        }
+        LockDoor();
 
         if (phoneRinging != null)
             phoneRinging.Play();
@@ -183,83 +219,108 @@ public class HallwayLoopManager : MonoBehaviour
 
     private void Loop5()
     {
-        SetActive(lightsOff, true);
-        SetActive(tvNews, true);
+        SetAllLights(false);
 
-        if (whyDidntYouAnswerSfx != null)
-            whyDidntYouAnswerSfx.Play();
+        ShowTVNews();
+        PlayTVClip(glitchyReport, true);
     }
 
     private void Loop6()
     {
-        SetActive(lightsOn, true);
-        SetActive(tvStatic, true);
+        SetAllLights(true);
 
-        if (exitDoor != null)
-        {
-            exitDoor.locked = true;
-            SetActive(teleporter, false);
-        }
+        ShowTVStatic();
+        PlayTVClip(questioning, true);
+
+        LockDoor();
     }
 
     private void Loop7()
     {
-        SetActive(finalEmptyHallway, true);
-        SetActive(tvOff, true);
-        SetActive(lightsOff, true);
-    }
+        SetAllLights(false);
 
-    private void Ending()
-    {
-        if (!string.IsNullOrEmpty(endingSceneName))
-            SceneManager.LoadScene(endingSceneName);
+        ShowTVOff();
+        PlayTVClip(allDead, true);
+
+        SetActive(finalEmptyHallway, true);
     }
 
     public void AnswerPhone()
     {
-        phoneAnswered = true;
-
         if (phoneRinging != null)
             phoneRinging.Stop();
 
-        CancelInvoke(nameof(PlayPickUpPhone));
-
         if (loopCount == 2)
         {
-            if (exitDoor != null)
-            {
-                exitDoor.locked = false;
-                SetActive(teleporter, true);
-            }
+            UnlockDoor();
         }
 
         if (loopCount == 4)
         {
-            SetActive(lightsOff, false);
-            SetActive(lightsOn, true);
+            SetAllLights(true);
             SetActive(bloodWalls, true);
-
-            if (exitDoor != null)
-            {
-                exitDoor.locked = false;
-                SetActive(teleporter, true);
-            }
+            UnlockDoor();
         }
+    }
+
+    public void PlayerReachedFigure()
+    {
+        if (loopCount != 3 || playerReachedFigure)
+            return;
+
+        playerReachedFigure = true;
+
+        StopLoop3BroadcastInterruptions();
+
+        ShowTVOff();
+        StopTVAudio();
+        SetAllLights(false);
+
+        Debug.Log("Loop 3: Player got too close to the figure.");
+    }
+
+    public void PlayerReachedDoorLoop3()
+    {
+        if (loopCount != 3 || !playerReachedFigure)
+            return;
+
+        SetAllLights(true);
+
+        ShowTVNews();
+        LockDoor();
+
+        waitingForLookBehind = true;
+
+        StartLoop3BroadcastInterruptions();
+
+        if (loop3ForcedLook != null)
+            loop3ForcedLook.StartForcedLook();
+
+        Debug.Log("Loop 3: Lights back on. Broadcast now gets interrupted by look behind you.");
     }
 
     public void LookedBehind()
     {
-        lookedBehind = true;
-
         if (loopCount == 3)
         {
-            CancelInvoke(nameof(PlayLookBehindYou));
+            if (!waitingForLookBehind)
+                return;
 
-            if (exitDoor != null)
-            {
-                exitDoor.locked = false;
-                SetActive(teleporter, true);
-            }
+            StopForcedLookBehind();
+
+            if (playerMovementScript != null)
+                playerMovementScript.enabled = true;
+
+            if (cameraController != null)
+                cameraController.SetForceLooking(false);
+
+            StopLoop3BroadcastInterruptions();
+            StopTVAudio();
+            UnlockDoor();
+
+            waitingForLookBehind = false;
+
+            Debug.Log("Loop 3 complete. Door unlocked.");
         }
 
         if (loopCount == 6 && !chaseStarted)
@@ -270,11 +331,13 @@ public class HallwayLoopManager : MonoBehaviour
 
     public void ReachedDoorInLoop6()
     {
-        if (loopCount == 6 && exitDoor != null) 
-        { 
-            exitDoor.locked = true;
-            SetActive(teleporter, false);
-        }
+        if (loopCount != 6)
+            return;
+
+        StopTVAudio();
+        LockDoor();
+
+        Debug.Log("Loop 6: Player reached locked door. Waiting for look behind/chase trigger.");
     }
 
     private void StartChase()
@@ -286,25 +349,238 @@ public class HallwayLoopManager : MonoBehaviour
         if (chaseMusic != null)
             chaseMusic.Play();
 
+        UnlockDoor();
+
+        Debug.Log("Loop 6: Chase started. Door unlocked.");
+    }
+
+    private void StartForcedLookBehind()
+    {
+        StopForcedLookBehind();
+        forcedLookCoroutine = StartCoroutine(ForceLookBehindRoutine());
+    }
+
+    private void StopForcedLookBehind()
+    {
+        if (forcedLookCoroutine != null)
+        {
+            StopCoroutine(forcedLookCoroutine);
+            forcedLookCoroutine = null;
+        }
+    }
+
+    private IEnumerator ForceLookBehindRoutine()
+    {
+        if (playerMovementScript != null)
+            playerMovementScript.enabled = false;
+
+        if (cameraController != null)
+            cameraController.SetForceLooking(true);
+
+        float timer = 0f;
+
+        while (timer < lookBehindDuration)
+        {
+            timer += Time.deltaTime;
+
+            if (cameraController != null && monsterLookTarget != null)
+                cameraController.DriftLookToward(monsterLookTarget, lookBehindSmoothSpeed);
+
+            yield return null;
+        }
+
+        if (cameraController != null)
+            cameraController.SetForceLooking(false);
+
+        if (playerMovementScript != null)
+            playerMovementScript.enabled = true;
+
+        forcedLookCoroutine = null;
+    }
+
+    private void StartLoop3BroadcastInterruptions()
+    {
+        StopLoop3BroadcastInterruptions();
+        loop3BroadcastCoroutine = StartCoroutine(Loop3BroadcastWithInterruptions());
+    }
+
+    private void StopLoop3BroadcastInterruptions()
+    {
+        if (loop3BroadcastCoroutine != null)
+        {
+            StopCoroutine(loop3BroadcastCoroutine);
+            loop3BroadcastCoroutine = null;
+        }
+    }
+
+    private IEnumerator Loop3BroadcastWithInterruptions()
+    {
+        PlayTVClip(behindYou, false);
+
+        if (behindYou != null)
+            yield return new WaitForSeconds(behindYou.length);
+
+        PlayTVClip(secondReport, true);
+
+        while (true)
+        {
+            yield return new WaitForSeconds(lookBehindInterruptDelay);
+
+            if (tvAudioSource == null || behindYou == null)
+                continue;
+
+            float savedTime = 0f;
+
+            if (tvAudioSource.clip == secondReport)
+                savedTime = tvAudioSource.time;
+
+            tvAudioSource.Stop();
+            tvAudioSource.clip = behindYou;
+            tvAudioSource.loop = false;
+            tvAudioSource.time = 0f;
+            tvAudioSource.Play();
+
+            yield return new WaitForSeconds(behindYou.length);
+
+            if (secondReport != null)
+            {
+                tvAudioSource.Stop();
+                tvAudioSource.clip = secondReport;
+                tvAudioSource.loop = true;
+
+                if (secondReport.length > 0f)
+                    tvAudioSource.time = savedTime % secondReport.length;
+
+                tvAudioSource.Play();
+            }
+        }
+    }
+
+    private void LockDoor()
+    {
+        if (exitDoor != null)
+            exitDoor.locked = true;
+
+        SetActive(teleporter, false);
+    }
+
+    private void UnlockDoor()
+    {
         if (exitDoor != null)
             exitDoor.locked = false;
+
+        SetActive(teleporter, true);
     }
 
-    private void PlayPickUpPhone()
+    private void ShowTVStatic()
     {
-        if (pickUpPhoneSfx != null)
-            pickUpPhoneSfx.Play();
+        SetActive(tvStatic, true);
+        SetActive(tvNews, false);
+        SetActive(tvOff, false);
     }
 
-    private void PlayLookBehindYou()
+    private void ShowTVNews()
     {
-        if (lookBehindYouSfx != null)
-            lookBehindYouSfx.Play();
+        SetActive(tvStatic, false);
+        SetActive(tvNews, true);
+        SetActive(tvOff, false);
+    }
+
+    private void ShowTVOff()
+    {
+        SetActive(tvStatic, false);
+        SetActive(tvNews, false);
+        SetActive(tvOff, true);
+    }
+
+    private void PlayTVClip(AudioClip clip, bool loop = true)
+    {
+        if (tvAudioSource == null || clip == null)
+            return;
+
+        if (tvAudioSource.clip == clip && tvAudioSource.isPlaying)
+            return;
+
+        tvAudioSource.Stop();
+        tvAudioSource.clip = clip;
+        tvAudioSource.loop = loop;
+        tvAudioSource.time = 0f;
+        tvAudioSource.Play();
+    }
+
+    private void StopTVAudio()
+    {
+        if (tvAudioSource != null)
+            tvAudioSource.Stop();
+    }
+
+    private void SetAllLights(bool on)
+    {
+        SetActive(lightsOn, on);
+        SetActive(lightsOff, !on);
+        SetBackLight(on);
+    }
+
+    private void SetBackLight(bool on)
+    {
+        StopBackLightFlicker();
+
+        SetActive(backLightOn, on);
+        SetActive(backLightOff, !on);
+    }
+
+    private void StartBackLightFlicker()
+    {
+        StopBackLightFlicker();
+        backLightFlickerCoroutine = StartCoroutine(BackLightFlicker());
+    }
+
+    private void StopBackLightFlicker()
+    {
+        if (backLightFlickerCoroutine != null)
+        {
+            StopCoroutine(backLightFlickerCoroutine);
+            backLightFlickerCoroutine = null;
+        }
+    }
+
+    private IEnumerator BackLightFlicker()
+    {
+        while (true)
+        {
+            SetActive(backLightOn, true);
+            SetActive(backLightOff, false);
+
+            yield return new WaitForSeconds(Random.Range(minTimeBetweenFlickers, maxTimeBetweenFlickers));
+
+            int flickerCount = Random.Range(minFlickersPerBurst, maxFlickersPerBurst + 1);
+
+            for (int i = 0; i < flickerCount; i++)
+            {
+                SetActive(backLightOn, false);
+                SetActive(backLightOff, true);
+
+                yield return new WaitForSeconds(Random.Range(minFlickerSpeed, maxFlickerSpeed));
+
+                SetActive(backLightOn, true);
+                SetActive(backLightOff, false);
+
+                yield return new WaitForSeconds(Random.Range(minFlickerSpeed, maxFlickerSpeed));
+            }
+        }
     }
 
     private void ResetEverything()
     {
-        CancelInvoke();
+        StopBackLightFlicker();
+        StopLoop3BroadcastInterruptions();
+        StopForcedLookBehind();
+
+        if (playerMovementScript != null)
+            playerMovementScript.enabled = true;
+
+        if (cameraController != null)
+            cameraController.SetForceLooking(false);
 
         SetActive(drugs, false);
         SetActive(missingPeoplePhotos, false);
@@ -322,25 +598,32 @@ public class HallwayLoopManager : MonoBehaviour
         SetActive(lightsOn, false);
         SetActive(lightsOff, false);
         SetActive(redLights, false);
-        SetActive(flickeringBackLight, false);
+
+        SetActive(backLightOn, false);
+        SetActive(backLightOff, false);
     }
 
-    private void StopAllLoopAudio()
+    private void StopAllAudio()
     {
+        StopLoop3BroadcastInterruptions();
+
         StopAudio(rainSfx);
         StopAudio(phoneRinging);
         StopAudio(cryingSfx);
-        StopAudio(newsReportSfx);
-        StopAudio(pickUpPhoneSfx);
-        StopAudio(lookBehindYouSfx);
-        StopAudio(whyDidntYouAnswerSfx);
         StopAudio(chaseMusic);
+        StopTVAudio();
     }
 
     private void StopAudio(AudioSource audio)
     {
         if (audio != null && audio.isPlaying)
             audio.Stop();
+    }
+
+    private void Ending()
+    {
+        if (!string.IsNullOrEmpty(endingSceneName))
+            SceneManager.LoadScene(endingSceneName);
     }
 
     private void SetActive(GameObject obj, bool active)
