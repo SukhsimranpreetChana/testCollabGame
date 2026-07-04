@@ -25,6 +25,19 @@ public class HallwayLoopManager : MonoBehaviour
     [Header("Phone Audio Source")]
     public AudioSource phoneVoiceSource;
 
+    [Header("Player Phone Audio")]
+    public AudioSource playerPhoneAudioSource;
+    public AudioClip pickUpPhone;
+    public AudioClip noAnswer;
+    public AudioClip hangUpPhone;
+
+    [Header("Player Loop Audio Source")]
+    public AudioSource playerLoopAudioSource;
+    public AudioClip beginningLoop;
+    public AudioClip addedLoop;
+    public AudioClip finalLoop;
+    public AudioClip endingLoop;
+
     [Header("TV Audio Source")]
     public AudioSource tvAudioSource;
 
@@ -37,6 +50,12 @@ public class HallwayLoopManager : MonoBehaviour
     public AudioClip questioning;
     public AudioClip allDead;
 
+    [Header("Loop 4 Red Room Phone Repeats")]
+    public AudioClip whyNoAnswer1;
+    public AudioClip whyNoAnswer2;
+    public AudioClip whyNoAnswer3;
+    public float timeBetweenRandomPhoneClips = 0.25f;
+
     [Header("Loop 3 TV Interruption")]
     public float lookBehindInterruptDelay = 6f;
 
@@ -46,7 +65,17 @@ public class HallwayLoopManager : MonoBehaviour
     public Behaviour playerMovementScript;
     public CameraController cameraController;
 
+    [Header("Loop 6 Looked At Monster Trigger")]
+    public Camera playerCamera;
+    public GameObject lookedAtMonster;
+    public string lookedAtMonsterName = "LookedAtMonster";
+    public float lookRayDistance = 100f;
+    public GameObject monsterChase;
+    public Animator monsterChaseAnimator;
+    public string monsterChaseAnimationTrigger = "StartChase";
+
     [Header("Objects")]
+    public GameObject baseScene;
     public GameObject drugs;
     public GameObject missingPeoplePhotos;
     public GameObject hallwayFigure;
@@ -84,9 +113,17 @@ public class HallwayLoopManager : MonoBehaviour
     private bool chaseStarted = false;
     private bool playerReachedFigure = false;
     private bool waitingForLookBehind = false;
+    private bool loop6DoorChecked = false;
+    private bool loop6ChaseAnimationStarted = false;
+    private bool endingStarted = false;
+
+    private bool phoneIsRinging = false;
+    private bool noAnswerPlayedThisLoop = false;
 
     private Coroutine backLightFlickerCoroutine;
     private Coroutine loop3BroadcastCoroutine;
+    private Coroutine loop4RandomPhoneCoroutine;
+    private Coroutine phoneVoiceCoroutine;
     private AudioClip originalPhoneRingingClip;
 
     private void Start()
@@ -97,6 +134,11 @@ public class HallwayLoopManager : MonoBehaviour
         ApplyLoop();
     }
 
+    private void Update()
+    {
+        CheckLoop6LookedAtMonsterRaycast();
+    }
+
     public void NextLoop()
     {
         loopCount++;
@@ -104,6 +146,12 @@ public class HallwayLoopManager : MonoBehaviour
         chaseStarted = false;
         playerReachedFigure = false;
         waitingForLookBehind = false;
+        loop6DoorChecked = false;
+        loop6ChaseAnimationStarted = false;
+        noAnswerPlayedThisLoop = false;
+
+        StopLoop4RandomPhoneClips();
+        StopPhoneVoiceCoroutine();
 
         if (playerMovementScript != null)
             playerMovementScript.enabled = true;
@@ -130,6 +178,7 @@ public class HallwayLoopManager : MonoBehaviour
             exitDoor.locked = false;
 
         SetActive(teleporter, true);
+        SetActive(baseScene, true);
 
         switch (loopCount)
         {
@@ -205,7 +254,6 @@ public class HallwayLoopManager : MonoBehaviour
     {
         SetAllLights(false);
 
-        // Loop 4: TV stays on and tells the player to answer the phone.
         ShowTVNews();
         PlayTVClip(answerThePhone, false);
 
@@ -222,6 +270,8 @@ public class HallwayLoopManager : MonoBehaviour
 
         ShowTVNews();
         PlayTVClip(glitchyReport, true);
+
+        PlayPlayerLoopClip(addedLoop, true);
     }
 
     private void Loop6()
@@ -236,18 +286,28 @@ public class HallwayLoopManager : MonoBehaviour
 
     private void Loop7()
     {
-        SetAllLights(false);
+        SetAllLights(true);
 
         ShowTVOff();
-        PlayTVClip(allDead, true);
+        StopTVAudio();
 
+        SetActive(baseScene, false);
         SetActive(finalEmptyHallway, true);
+
+        PlayPlayerLoopClip(allDead, false);
     }
 
     public void AnswerPhone()
     {
-        if (phoneRinging != null)
-            phoneRinging.Stop();
+        PlayPlayerPhoneClip(pickUpPhone);
+
+        if (!phoneIsRinging)
+        {
+            TryPlayNoAnswer();
+            return;
+        }
+
+        StopPhoneRinging();
 
         if (phoneVoiceSource != null)
             phoneVoiceSource.Stop();
@@ -259,8 +319,6 @@ public class HallwayLoopManager : MonoBehaviour
 
         if (loopCount == 4)
         {
-            // When the phone is answered, the hallway turns red.
-            // The TV stays visually on, but the questioning audio now comes from the phone.
             SetActive(lightsOn, false);
             SetActive(lightsOff, false);
             SetActive(redLights, true);
@@ -268,11 +326,23 @@ public class HallwayLoopManager : MonoBehaviour
 
             ShowTVNews();
             StopTVAudio();
-            PlayPhoneClip(questioning, false);
+
+            PlayPhoneClipWithoutHangUp(questioning, StartLoop4RandomPhoneClipsAfterQuestioning);
+
+            PlayPlayerLoopClip(beginningLoop, true);
 
             SetActive(bloodWalls, true);
             UnlockDoor();
         }
+    }
+
+    private void TryPlayNoAnswer()
+    {
+        if (noAnswerPlayedThisLoop)
+            return;
+
+        noAnswerPlayedThisLoop = true;
+        PlayPhoneClipThenHangUp(noAnswer);
     }
 
     public void PlayerReachedFigure()
@@ -288,7 +358,6 @@ public class HallwayLoopManager : MonoBehaviour
         StopTVAudio();
         SetAllLights(false);
 
-        // New: when the lights go out, the hallway figure disappears.
         SetActive(hallwayFigure, false);
 
         Debug.Log("Loop 3: Player got too close to the figure. Lights out, figure hidden.");
@@ -309,7 +378,6 @@ public class HallwayLoopManager : MonoBehaviour
 
         StartLoop3BroadcastInterruptions();
 
-        // New: only start forced look once.
         if (forceLookBehind && loop3ForcedLook != null)
             loop3ForcedLook.StartForcedLook();
 
@@ -337,11 +405,6 @@ public class HallwayLoopManager : MonoBehaviour
 
             Debug.Log("Loop 3 complete. Door unlocked.");
         }
-
-        if (loopCount == 6 && !chaseStarted)
-        {
-            StartChase();
-        }
     }
 
     public void ReachedDoorInLoop6()
@@ -352,7 +415,56 @@ public class HallwayLoopManager : MonoBehaviour
         StopTVAudio();
         LockDoor();
 
-        Debug.Log("Loop 6: Player reached locked door. Waiting for look behind/chase trigger.");
+        loop6DoorChecked = true;
+        SetActive(monsterChase, true);
+
+        Debug.Log("Loop 6: Player reached locked door. monsterChase enabled. Waiting for player to look at LookedAtMonster.");
+    }
+
+    private void CheckLoop6LookedAtMonsterRaycast()
+    {
+        if (loopCount != 6)
+            return;
+
+        if (!loop6DoorChecked || chaseStarted || loop6ChaseAnimationStarted)
+            return;
+
+        Camera cam = playerCamera != null ? playerCamera : Camera.main;
+
+        if (cam == null)
+            return;
+
+        Ray ray = new Ray(cam.transform.position, cam.transform.forward);
+
+        if (Physics.Raycast(ray, out RaycastHit hit, lookRayDistance))
+        {
+            GameObject hitObject = hit.collider.gameObject;
+
+            bool hitAssignedObject = lookedAtMonster != null && hitObject == lookedAtMonster;
+            bool hitNamedObject = !string.IsNullOrEmpty(lookedAtMonsterName) && hitObject.name == lookedAtMonsterName;
+
+            if (hitAssignedObject || hitNamedObject)
+            {
+                StartLoop6ChaseFromLook();
+            }
+        }
+    }
+
+    private void StartLoop6ChaseFromLook()
+    {
+        loop6ChaseAnimationStarted = true;
+
+        SetActive(monsterChase, true);
+
+        if (monsterChaseAnimator == null && monsterChase != null)
+            monsterChaseAnimator = monsterChase.GetComponent<Animator>();
+
+        if (monsterChaseAnimator != null && !string.IsNullOrEmpty(monsterChaseAnimationTrigger))
+            monsterChaseAnimator.SetTrigger(monsterChaseAnimationTrigger);
+
+        StartChase();
+
+        Debug.Log("Loop 6: LookedAtMonster raycast hit. Chase animation triggered.");
     }
 
     private void StartChase()
@@ -360,9 +472,12 @@ public class HallwayLoopManager : MonoBehaviour
         chaseStarted = true;
 
         SetActive(monster, true);
+        SetActive(monsterChase, true);
 
         if (chaseMusic != null)
             chaseMusic.Play();
+
+        PlayPlayerLoopClip(finalLoop, true);
 
         UnlockDoor();
 
@@ -427,6 +542,81 @@ public class HallwayLoopManager : MonoBehaviour
         }
     }
 
+    private void StartLoop4RandomPhoneClipsAfterQuestioning()
+    {
+        StopLoop4RandomPhoneClips();
+        loop4RandomPhoneCoroutine = StartCoroutine(Loop4RandomPhoneClips());
+    }
+
+    private void StopLoop4RandomPhoneClips()
+    {
+        if (loop4RandomPhoneCoroutine != null)
+        {
+            StopCoroutine(loop4RandomPhoneCoroutine);
+            loop4RandomPhoneCoroutine = null;
+        }
+    }
+
+    private IEnumerator Loop4RandomPhoneClips()
+    {
+        AudioClip lastClip = null;
+
+        while (loopCount == 4)
+        {
+            AudioClip randomClip = GetRandomLoop4PhoneClip(lastClip);
+
+            if (randomClip == null)
+                yield break;
+
+            lastClip = randomClip;
+
+            yield return StartCoroutine(PlayPhoneClipWithoutHangUpRoutine(randomClip));
+
+            yield return new WaitForSeconds(timeBetweenRandomPhoneClips);
+        }
+
+        loop4RandomPhoneCoroutine = null;
+    }
+
+    private AudioClip GetRandomLoop4PhoneClip(AudioClip lastClip)
+    {
+        AudioClip[] clips = new AudioClip[] { whyNoAnswer1, whyNoAnswer2, whyNoAnswer3 };
+        int validCount = 0;
+
+        for (int i = 0; i < clips.Length; i++)
+        {
+            if (clips[i] != null)
+                validCount++;
+        }
+
+        if (validCount == 0)
+            return null;
+
+        if (validCount == 1)
+        {
+            for (int i = 0; i < clips.Length; i++)
+            {
+                if (clips[i] != null)
+                    return clips[i];
+            }
+        }
+
+        AudioClip chosenClip = null;
+        int safety = 0;
+
+        while (chosenClip == null && safety < 20)
+        {
+            AudioClip candidate = clips[Random.Range(0, clips.Length)];
+
+            if (candidate != null && candidate != lastClip)
+                chosenClip = candidate;
+
+            safety++;
+        }
+
+        return chosenClip;
+    }
+
     private void LockDoor()
     {
         if (exitDoor != null)
@@ -476,20 +666,108 @@ public class HallwayLoopManager : MonoBehaviour
         phoneRinging.loop = true;
         phoneRinging.time = 0f;
         phoneRinging.Play();
+
+        phoneIsRinging = true;
     }
 
-    private void PlayPhoneClip(AudioClip clip, bool loop = false)
+    private void StopPhoneRinging()
+    {
+        if (phoneRinging != null)
+            phoneRinging.Stop();
+
+        phoneIsRinging = false;
+    }
+
+    private void PlayPlayerPhoneClip(AudioClip clip)
+    {
+        if (playerPhoneAudioSource == null || clip == null)
+            return;
+
+        playerPhoneAudioSource.Stop();
+        playerPhoneAudioSource.clip = clip;
+        playerPhoneAudioSource.loop = false;
+        playerPhoneAudioSource.time = 0f;
+        playerPhoneAudioSource.Play();
+    }
+
+    private void PlayPhoneClipWithoutHangUp(AudioClip clip, System.Action onComplete = null)
+    {
+        StopPhoneVoiceCoroutine();
+        phoneVoiceCoroutine = StartCoroutine(PlayPhoneClipWithoutHangUpRoutine(clip, onComplete));
+    }
+
+    private IEnumerator PlayPhoneClipWithoutHangUpRoutine(AudioClip clip, System.Action onComplete = null)
     {
         AudioSource source = phoneVoiceSource != null ? phoneVoiceSource : phoneRinging;
 
-        if (source == null || clip == null)
-            return;
+        if (source == null)
+            yield break;
 
-        source.Stop();
-        source.clip = clip;
-        source.loop = loop;
-        source.time = 0f;
-        source.Play();
+        if (clip != null)
+        {
+            source.Stop();
+            source.clip = clip;
+            source.loop = false;
+            source.time = 0f;
+            source.Play();
+
+            yield return new WaitForSeconds(clip.length);
+        }
+
+        onComplete?.Invoke();
+
+        if (phoneVoiceCoroutine != null)
+            phoneVoiceCoroutine = null;
+    }
+
+    private void PlayPhoneClipThenHangUp(AudioClip clip, System.Action onComplete = null)
+    {
+        StopPhoneVoiceCoroutine();
+        phoneVoiceCoroutine = StartCoroutine(PlayPhoneClipThenHangUpRoutine(clip, onComplete));
+    }
+
+    private IEnumerator PlayPhoneClipThenHangUpRoutine(AudioClip clip, System.Action onComplete = null)
+    {
+        AudioSource source = phoneVoiceSource != null ? phoneVoiceSource : phoneRinging;
+
+        if (source == null)
+            yield break;
+
+        if (clip != null)
+        {
+            source.Stop();
+            source.clip = clip;
+            source.loop = false;
+            source.time = 0f;
+            source.Play();
+
+            yield return new WaitForSeconds(clip.length);
+        }
+
+        if (hangUpPhone != null)
+        {
+            source.Stop();
+            source.clip = hangUpPhone;
+            source.loop = false;
+            source.time = 0f;
+            source.Play();
+
+            yield return new WaitForSeconds(hangUpPhone.length);
+        }
+
+        onComplete?.Invoke();
+
+        if (phoneVoiceCoroutine != null)
+            phoneVoiceCoroutine = null;
+    }
+
+    private void StopPhoneVoiceCoroutine()
+    {
+        if (phoneVoiceCoroutine != null)
+        {
+            StopCoroutine(phoneVoiceCoroutine);
+            phoneVoiceCoroutine = null;
+        }
     }
 
     private void PlayTVClip(AudioClip clip, bool loop = true)
@@ -511,6 +789,27 @@ public class HallwayLoopManager : MonoBehaviour
     {
         if (tvAudioSource != null)
             tvAudioSource.Stop();
+    }
+
+    private void PlayPlayerLoopClip(AudioClip clip, bool loop)
+    {
+        if (playerLoopAudioSource == null || clip == null)
+            return;
+
+        if (playerLoopAudioSource.clip == clip && playerLoopAudioSource.isPlaying)
+            return;
+
+        playerLoopAudioSource.Stop();
+        playerLoopAudioSource.clip = clip;
+        playerLoopAudioSource.loop = loop;
+        playerLoopAudioSource.time = 0f;
+        playerLoopAudioSource.Play();
+    }
+
+    private void StopPlayerLoopAudio()
+    {
+        if (playerLoopAudioSource != null)
+            playerLoopAudioSource.Stop();
     }
 
     private void SetAllLights(bool on)
@@ -573,6 +872,8 @@ public class HallwayLoopManager : MonoBehaviour
     {
         StopBackLightFlicker();
         StopLoop3BroadcastInterruptions();
+        StopLoop4RandomPhoneClips();
+        StopPhoneVoiceCoroutine();
 
         if (playerMovementScript != null)
             playerMovementScript.enabled = true;
@@ -580,11 +881,13 @@ public class HallwayLoopManager : MonoBehaviour
         if (cameraController != null)
             cameraController.SetForceLooking(false);
 
+        SetActive(baseScene, true);
         SetActive(drugs, false);
         SetActive(missingPeoplePhotos, false);
         SetActive(hallwayFigure, false);
         SetActive(monster, false);
         SetActive(loop3Monster, false);
+        SetActive(monsterChase, false);
         SetActive(furnitureBlockade, false);
         SetActive(dirtyWalls, false);
         SetActive(bloodWalls, false);
@@ -605,13 +908,18 @@ public class HallwayLoopManager : MonoBehaviour
     private void StopAllAudio()
     {
         StopLoop3BroadcastInterruptions();
+        StopLoop4RandomPhoneClips();
+        StopPhoneVoiceCoroutine();
 
         StopAudio(rainSfx);
-        StopAudio(phoneRinging);
+        StopPhoneRinging();
         StopAudio(phoneVoiceSource);
         StopAudio(cryingSfx);
         StopAudio(chaseMusic);
         StopTVAudio();
+
+        if (loopCount < 4 || loopCount > 7)
+            StopPlayerLoopAudio();
     }
 
     private void StopAudio(AudioSource audio)
@@ -621,6 +929,33 @@ public class HallwayLoopManager : MonoBehaviour
     }
 
     private void Ending()
+    {
+        if (endingStarted)
+            return;
+
+        endingStarted = true;
+
+        if (endingLoop != null && playerLoopAudioSource != null)
+        {
+            StartCoroutine(PlayEndingLoopThenLoad());
+        }
+        else
+        {
+            LoadEndingScene();
+        }
+    }
+
+    private IEnumerator PlayEndingLoopThenLoad()
+    {
+        PlayPlayerLoopClip(endingLoop, false);
+
+        if (endingLoop != null)
+            yield return new WaitForSeconds(endingLoop.length);
+
+        LoadEndingScene();
+    }
+
+    private void LoadEndingScene()
     {
         if (!string.IsNullOrEmpty(endingSceneName))
             SceneManager.LoadScene(endingSceneName);

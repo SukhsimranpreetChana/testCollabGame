@@ -1,71 +1,144 @@
 using UnityEngine;
-using UnityEngine.UI;
 
 public class CrosshairInteract : MonoBehaviour
 {
-    public RawImage crosshairImage;
+    [Header("Crosshair Objects")]
+    public GameObject crosshair;
+    public GameObject crosshairHit;
+
+    [Header("Interaction")]
     public string interactableTag = "Interactable";
-    public float hoverSizeMultiplier = 1.5f; // Multiplier for crosshair size when hovering
-    public float hoverOpacity = 1.0f; // Opacity when hovering
-    public float lerpSpeed = 5f; // Speed of interpolation
+    public float interactDistance = 3f;
 
-    private Color initialColor;
-    private float initialSize;
+    [Header("Crosshair Animation")]
+    public float hoverSizeMultiplier = 1.5f;
+    public float lerpSpeed = 5f;
 
-    void Start()
+    [Header("Camera")]
+    public Camera playerCamera;
+
+    private RectTransform normalCrosshairRect;
+    private RectTransform hitCrosshairRect;
+
+    private Vector2 normalInitialSize;
+    private Vector2 hitInitialSize;
+
+    private bool isLookingAtInteractable = false;
+
+    private void Start()
     {
-        initialColor = crosshairImage.color;
-        initialSize = crosshairImage.rectTransform.sizeDelta.x; // Assuming the crosshair is square
+        if (crosshair != null)
+        {
+            normalCrosshairRect = crosshair.GetComponent<RectTransform>();
+
+            if (normalCrosshairRect != null)
+                normalInitialSize = normalCrosshairRect.sizeDelta;
+        }
+
+        if (crosshairHit != null)
+        {
+            hitCrosshairRect = crosshairHit.GetComponent<RectTransform>();
+
+            if (hitCrosshairRect != null)
+                hitInitialSize = hitCrosshairRect.sizeDelta;
+        }
+
+        SetNormalCrosshairInstant();
     }
 
-    void Update()
+    private void Update()
     {
-        // Get the center of the screen
-        Vector3 screenCenter = new Vector3(Screen.width / 2f, Screen.height / 2f, 0);
+        CheckForInteractable();
+        AnimateCrosshair();
+    }
 
-        // Cast a ray from the camera's center through the screen point
-        Ray ray = Camera.main.ScreenPointToRay(screenCenter);
-        RaycastHit hit;
+    private void CheckForInteractable()
+    {
+        isLookingAtInteractable = false;
 
-        if (Physics.Raycast(ray, out hit, 1f))
+        if (playerCamera == null)
+            return;
+
+        Ray ray = new Ray(
+            playerCamera.transform.position,
+            playerCamera.transform.forward
+        );
+
+        if (Physics.Raycast(ray, out RaycastHit hit, interactDistance))
         {
             if (hit.collider.CompareTag(interactableTag))
             {
-                // Object with interactable tag is hit, interpolate to hover state
-                InterpolateToHoverState();
+                isLookingAtInteractable = true;
             }
-            else
+        }
+    }
+
+    private void AnimateCrosshair()
+    {
+        if (isLookingAtInteractable)
+        {
+            ShowInteractableCrosshair();
+
+            if (hitCrosshairRect != null)
             {
-                // No interactable object is hit, interpolate to idle state
-                InterpolateToIdleState();
+                Vector2 targetSize =
+                    hitInitialSize * hoverSizeMultiplier;
+
+                hitCrosshairRect.sizeDelta = Vector2.Lerp(
+                    hitCrosshairRect.sizeDelta,
+                    targetSize,
+                    Time.deltaTime * lerpSpeed
+                );
             }
         }
         else
         {
-            // No object is hit, interpolate to idle state
-            InterpolateToIdleState();
+            ShowNormalCrosshair();
+
+            if (normalCrosshairRect != null)
+            {
+                normalCrosshairRect.sizeDelta = Vector2.Lerp(
+                    normalCrosshairRect.sizeDelta,
+                    normalInitialSize,
+                    Time.deltaTime * lerpSpeed
+                );
+            }
         }
     }
 
-    void InterpolateToHoverState()
+    private void ShowNormalCrosshair()
     {
-        float targetOpacity = hoverOpacity;
-        float currentOpacity = Mathf.Lerp(crosshairImage.color.a, targetOpacity, Time.deltaTime * lerpSpeed);
-        crosshairImage.color = new Color(initialColor.r, initialColor.g, initialColor.b, currentOpacity);
+        if (crosshair != null)
+            crosshair.SetActive(true);
 
-        float targetSize = initialSize * hoverSizeMultiplier;
-        float currentSize = Mathf.Lerp(crosshairImage.rectTransform.sizeDelta.x, targetSize, Time.deltaTime * lerpSpeed);
-        crosshairImage.rectTransform.sizeDelta = new Vector2(currentSize, currentSize);
+        if (crosshairHit != null)
+            crosshairHit.SetActive(false);
+
+        if (hitCrosshairRect != null)
+            hitCrosshairRect.sizeDelta = hitInitialSize;
     }
 
-    void InterpolateToIdleState()
+    private void ShowInteractableCrosshair()
     {
-        float targetOpacity = 0.5f; // 50% opacity when not hovering
-        float currentOpacity = Mathf.Lerp(crosshairImage.color.a, targetOpacity, Time.deltaTime * lerpSpeed);
-        crosshairImage.color = new Color(initialColor.r, initialColor.g, initialColor.b, currentOpacity);
+        if (crosshair != null)
+            crosshair.SetActive(false);
 
-        float targetSize = initialSize;
-        float currentSize = Mathf.Lerp(crosshairImage.rectTransform.sizeDelta.x, targetSize, Time.deltaTime * lerpSpeed);
-        crosshairImage.rectTransform.sizeDelta = new Vector2(currentSize, currentSize);
+        if (crosshairHit != null)
+            crosshairHit.SetActive(true);
+    }
+
+    private void SetNormalCrosshairInstant()
+    {
+        if (crosshair != null)
+            crosshair.SetActive(true);
+
+        if (crosshairHit != null)
+            crosshairHit.SetActive(false);
+
+        if (normalCrosshairRect != null)
+            normalCrosshairRect.sizeDelta = normalInitialSize;
+
+        if (hitCrosshairRect != null)
+            hitCrosshairRect.sizeDelta = hitInitialSize;
     }
 }
