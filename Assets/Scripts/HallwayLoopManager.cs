@@ -88,9 +88,13 @@ public class HallwayLoopManager : MonoBehaviour
     public GameObject teleporter;
 
     [Header("TV Objects")]
+    public GameObject tvRoot;
     public GameObject tvStatic;
     public GameObject tvNews;
     public GameObject tvOff;
+
+    [Header("Phone Objects")]
+    public GameObject phoneRoot;
 
     [Header("Lights")]
     public GameObject lightsOn;
@@ -179,6 +183,8 @@ public class HallwayLoopManager : MonoBehaviour
 
         SetActive(teleporter, true);
         SetActive(baseScene, true);
+        SetActive(tvRoot, true);
+        SetActive(phoneRoot, true);
 
         switch (loopCount)
         {
@@ -288,8 +294,16 @@ public class HallwayLoopManager : MonoBehaviour
     {
         SetAllLights(true);
 
-        ShowTVOff();
         StopTVAudio();
+        StopPhoneRinging();
+        StopAudio(phoneVoiceSource);
+
+        SetActive(tvStatic, false);
+        SetActive(tvNews, false);
+        SetActive(tvOff, false);
+
+        SetActive(tvRoot, false);
+        SetActive(phoneRoot, false);
 
         SetActive(baseScene, false);
         SetActive(finalEmptyHallway, true);
@@ -882,6 +896,8 @@ public class HallwayLoopManager : MonoBehaviour
             cameraController.SetForceLooking(false);
 
         SetActive(baseScene, true);
+        SetActive(tvRoot, true);
+        SetActive(phoneRoot, true);
         SetActive(drugs, false);
         SetActive(missingPeoplePhotos, false);
         SetActive(hallwayFigure, false);
