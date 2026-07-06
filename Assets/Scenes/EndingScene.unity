@@ -9994,6 +9994,7 @@ MonoBehaviour:
   pickUpPhone: {fileID: 8300000, guid: d815aa59a14a3a440bf7327e2bbdf7e0, type: 3}
   noAnswer: {fileID: 8300000, guid: 7935276ae65617e4990ad86216076ee0, type: 3}
   hangUpPhone: {fileID: 8300000, guid: 16bcda94b93f60e4dbca82b6521ffc3a, type: 3}
+  phoneLineHangUpSfx: {fileID: 0}
   playerLoopAudioSource: {fileID: 0}
   beginningLoop: {fileID: 0}
   addedLoop: {fileID: 0}
@@ -10034,9 +10035,11 @@ MonoBehaviour:
   bloodWalls: {fileID: 0}
   finalEmptyHallway: {fileID: 0}
   teleporter: {fileID: 329390402}
+  tvRoot: {fileID: 0}
   tvStatic: {fileID: 1064291813}
   tvNews: {fileID: 1064291813}
   tvOff: {fileID: 232528701}
+  phoneRoot: {fileID: 0}
   lightsOn: {fileID: 659758724}
   lightsOff: {fileID: 739132403}
   redLights: {fileID: 590350430}

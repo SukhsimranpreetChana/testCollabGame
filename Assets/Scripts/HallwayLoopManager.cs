@@ -30,6 +30,7 @@ public class HallwayLoopManager : MonoBehaviour
     public AudioClip pickUpPhone;
     public AudioClip noAnswer;
     public AudioClip hangUpPhone;
+    public AudioClip phoneLineHangUpSfx;
 
     [Header("Player Loop Audio Source")]
     public AudioSource playerLoopAudioSource;
@@ -328,6 +329,7 @@ public class HallwayLoopManager : MonoBehaviour
 
         if (loopCount == 2)
         {
+            PlayPhoneClipWithoutHangUp(phoneLineHangUpSfx);
             UnlockDoor();
         }
 
