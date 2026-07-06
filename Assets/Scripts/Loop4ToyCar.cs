@@ -1,38 +1,69 @@
 using UnityEngine;
 using System.Collections;
+using VHS;
 
 public class Loop4ToyCar : MonoBehaviour
 {
-    [Header("Loop Manager")]
     public HallwayLoopManager loopManager;
 
-    [Header("Player")]
     public Behaviour playerMovementScript;
+    public CameraController cameraController;
 
-    [Header("Forced Look")]
     public ForcedLook toyCarForcedLook;
 
-    [Header("Toy Car")]
+    public GameObject toyCarObject;
     public Animator carAnimator;
     public string carMoveAnimation = "carMove";
 
-    [Header("Timing")]
-    public float forcedLookTime = 5f;
+    public AudioSource musicSource;
+    public AudioSource thumpSource;
 
-    [Header("Trigger")]
+    public float forcedLookTime = 1f;
+
     public string playerTag = "Player";
     public bool playOnlyOnce = true;
 
     private bool hasPlayed = false;
     private Coroutine carRoutine;
 
+    private void Start()
+    {
+        UpdateToyCarActiveState();
+    }
+
+    private void Update()
+    {
+        UpdateToyCarActiveState();
+    }
+
+    private void OnDisable()
+    {
+        StopMusic();
+        StopThump();
+
+        if (cameraController != null)
+            cameraController.SetForceLooking(false);
+
+        if (playerMovementScript != null)
+            playerMovementScript.enabled = true;
+    }
+
+    private void UpdateToyCarActiveState()
+    {
+        bool shouldBeActive = loopManager != null && loopManager.loopCount == 4;
+
+        if (toyCarObject != null && toyCarObject.activeSelf != shouldBeActive)
+            toyCarObject.SetActive(shouldBeActive);
+
+        if (shouldBeActive)
+            PlayMusic();
+        else
+            StopMusic();
+    }
+
     private void OnTriggerEnter(Collider other)
     {
-        if (loopManager == null)
-            return;
-
-        // Only work during Loop 4
-        if (loopManager.loopCount != 4)
+        if (loopManager == null || loopManager.loopCount != 4)
             return;
 
         if (!other.CompareTag(playerTag))
@@ -51,26 +82,57 @@ public class Loop4ToyCar : MonoBehaviour
 
     private IEnumerator ToyCarRoutine()
     {
-        // Stop player movement
         if (playerMovementScript != null)
             playerMovementScript.enabled = false;
 
-        // Force player to look at toy car
         if (toyCarForcedLook != null)
             toyCarForcedLook.StartForcedLook();
 
-        // Play car animation
+        PlayThump();
+
         if (carAnimator != null)
             carAnimator.Play(carMoveAnimation, 0, 0f);
 
-        // Wait while car animation / forced look happens
         yield return new WaitForSeconds(forcedLookTime);
 
-        // Give movement back
+        if (cameraController != null)
+            cameraController.SetForceLooking(false);
+
         if (playerMovementScript != null)
             playerMovementScript.enabled = true;
 
         carRoutine = null;
+    }
+
+    private void PlayMusic()
+    {
+        if (musicSource != null && !musicSource.isPlaying)
+        {
+            musicSource.loop = true;
+            musicSource.Play();
+        }
+    }
+
+    private void StopMusic()
+    {
+        if (musicSource != null && musicSource.isPlaying)
+            musicSource.Stop();
+    }
+
+    private void PlayThump()
+    {
+        if (thumpSource == null)
+            return;
+
+        thumpSource.loop = false;
+        thumpSource.Stop();
+        thumpSource.Play();
+    }
+
+    private void StopThump()
+    {
+        if (thumpSource != null && thumpSource.isPlaying)
+            thumpSource.Stop();
     }
 
     public void ResetTrigger()
@@ -82,5 +144,11 @@ public class Loop4ToyCar : MonoBehaviour
             StopCoroutine(carRoutine);
             carRoutine = null;
         }
+
+        if (cameraController != null)
+            cameraController.SetForceLooking(false);
+
+        if (playerMovementScript != null)
+            playerMovementScript.enabled = true;
     }
 }
