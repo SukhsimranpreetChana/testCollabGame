@@ -12,9 +12,12 @@ interface IInteractable
 public class PlayerInteract : MonoBehaviour
 {
     public TextMeshProUGUI instructText;
+    public TutorialText tutorialText;
     public GameObject text;
     public bool once;
     public bool open;
+
+    private bool showedTutorial = false;
     // Start is called before the first frame update
     void Start()
     {
@@ -32,11 +35,8 @@ public class PlayerInteract : MonoBehaviour
             GameObject hitObject = hit.collider.gameObject;
             if (hitObject.CompareTag("Interactable"))
             {
-                text.SetActive(true);
-            }
-            else
-            {
-                text.SetActive(false);
+                ShowTutorial();
+
             }
 
             if (Input.GetKeyDown(KeyCode.E))
@@ -49,4 +49,16 @@ public class PlayerInteract : MonoBehaviour
             }
         }
     }
+
+    public void ShowTutorial()
+    {
+        if (showedTutorial)
+            return;
+
+        showedTutorial = true;
+
+        if (tutorialText != null)
+            tutorialText.ShowInteractTutorial();
+    }
+
 }

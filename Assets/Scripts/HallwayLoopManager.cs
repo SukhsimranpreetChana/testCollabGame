@@ -21,6 +21,27 @@ public class HallwayLoopManager : MonoBehaviour
     public AudioSource phoneRinging;
     public AudioSource cryingSfx;
     public AudioSource chaseMusic;
+    public AudioSource scaryMoanSfx;
+    public AudioSource thuddingSfx;
+    public AudioClip thuddingClip;
+    public float thuddingDelayAfterMoan = -1f;
+
+    [Header("Loop 6 Chase Effects")]
+    public GameObject runText;
+    public CameraShake cameraShake;
+
+    [Tooltip("Delay after the Loop 6 chase trigger before red lights turn on.")]
+    public float redLightsDelay = 3.5f;
+
+    [Tooltip("Delay after the Loop 6 chase trigger before camera shake starts.")]
+    public float cameraShakeDelay = 3.5f;
+
+    [Tooltip("Chase music starts this many seconds before the red lights/camera shake moment.")]
+    public float musicLeadTime = 1f;
+
+    public float cameraShakeDuration = 1.5f;
+    public float cameraShakeStrength = 0.1f;
+    public float cameraShakeSpeed = 30f;
 
     [Header("Phone Audio Source")]
     public AudioSource phoneVoiceSource;
@@ -64,7 +85,21 @@ public class HallwayLoopManager : MonoBehaviour
     public bool forceLookBehind = true;
     public Transform monsterLookTarget;
     public Behaviour playerMovementScript;
+    public FirstPersonController firstPersonController;
+    public Behaviour[] extraMovementScriptsToDisable;
+    public CharacterController playerCharacterController;
+    public Rigidbody playerRigidbody;
+    public Transform playerRoot;
     public CameraController cameraController;
+
+    [Header("Loop 3 Movement Lock")]
+    public bool autoFindPlayerReferences = true;
+    public Transform headBobTransformToFreeze;
+
+    [Header("Loop 3 Monster Animation")]
+    public Animator loop3MonsterAnimator;
+    public string loop3BackwardWalkStateName = "BackwardWalk";
+    public float loop3MonsterDisappearDelay = 3f;
 
     [Header("Loop 6 Looked At Monster Trigger")]
     public Camera playerCamera;
@@ -96,6 +131,7 @@ public class HallwayLoopManager : MonoBehaviour
 
     [Header("Phone Objects")]
     public GameObject phoneRoot;
+    public GameObject phoneRoot2;
 
     [Header("Lights")]
     public GameObject lightsOn;
@@ -125,10 +161,26 @@ public class HallwayLoopManager : MonoBehaviour
     private bool phoneIsRinging = false;
     private bool noAnswerPlayedThisLoop = false;
 
+    private bool loop3PlayerMovementLocked = false;
+    private Vector3 loop3LockedPlayerPosition;
+    private Quaternion loop3LockedPlayerRotation;
+    private bool playerCharacterControllerWasEnabled = false;
+    private bool playerRigidbodyWasKinematic = false;
+    private bool playerMovementScriptWasEnabled = false;
+    private bool firstPersonControllerWasEnabled = false;
+    private bool[] extraMovementScriptsWereEnabled;
+    private Vector3 lockedHeadBobLocalPosition;
+
     private Coroutine backLightFlickerCoroutine;
     private Coroutine loop3BroadcastCoroutine;
     private Coroutine loop4RandomPhoneCoroutine;
     private Coroutine phoneVoiceCoroutine;
+    private Coroutine loop6CameraShakeCoroutine;
+    private Coroutine loop6RedLightsCoroutine;
+    private Coroutine loop6ChaseMusicCoroutine;
+    private Coroutine loop6ThuddingCoroutine;
+    private Coroutine loop2ReportCoroutine;
+    private Coroutine loop3MonsterDisappearCoroutine;
     private AudioClip originalPhoneRingingClip;
 
     private void Start()
@@ -142,6 +194,7 @@ public class HallwayLoopManager : MonoBehaviour
     private void Update()
     {
         CheckLoop6LookedAtMonsterRaycast();
+        MaintainLoop3PlayerLock();
     }
 
     public void NextLoop()
@@ -157,9 +210,14 @@ public class HallwayLoopManager : MonoBehaviour
 
         StopLoop4RandomPhoneClips();
         StopPhoneVoiceCoroutine();
+        StopLoop2ReportThenPhone();
+        StopLoop3MonsterDisappear();
+        StopLoop6CameraShake();
+        StopLoop6RedLights();
+        StopLoop6ChaseMusic();
+        StopLoop6MoanThenThudding();
 
-        if (playerMovementScript != null)
-            playerMovementScript.enabled = true;
+        UnlockPlayerMovement();
 
         if (cameraController != null)
             cameraController.SetForceLooking(false);
@@ -231,14 +289,58 @@ public class HallwayLoopManager : MonoBehaviour
         StartBackLightFlicker();
 
         ShowTVNews();
-        PlayTVClip(normalReport, true);
 
         SetActive(drugs, true);
         SetActive(missingPeoplePhotos, true);
 
         LockDoor();
 
-        PlayPhoneRinging();
+        // The phone does not ring until the player has heard
+        // the full normal news report once.
+        StartLoop2ReportThenPhone();
+    }
+
+    private void StartLoop2ReportThenPhone()
+    {
+        StopLoop2ReportThenPhone();
+        loop2ReportCoroutine = StartCoroutine(Loop2ReportThenPhoneRoutine());
+    }
+
+    private void StopLoop2ReportThenPhone()
+    {
+        if (loop2ReportCoroutine != null)
+        {
+            StopCoroutine(loop2ReportCoroutine);
+            loop2ReportCoroutine = null;
+        }
+    }
+
+    private IEnumerator Loop2ReportThenPhoneRoutine()
+    {
+        if (tvAudioSource != null && normalReport != null)
+        {
+            PlayTVClip(normalReport, false);
+
+            yield return new WaitWhile(() =>
+                loopCount == 2 &&
+                tvAudioSource != null &&
+                tvAudioSource.isPlaying &&
+                tvAudioSource.clip == normalReport
+            );
+        }
+
+        if (loopCount == 2)
+        {
+            // Continue looping the report after the first full play.
+            PlayTVClip(normalReport, true);
+
+            // Now the phone can start ringing.
+            PlayPhoneRinging();
+
+            Debug.Log("Loop 2: Normal report heard once. Phone started ringing.");
+        }
+
+        loop2ReportCoroutine = null;
     }
 
     private void Loop3()
@@ -305,6 +407,7 @@ public class HallwayLoopManager : MonoBehaviour
 
         SetActive(tvRoot, false);
         SetActive(phoneRoot, false);
+        SetActive(phoneRoot2, false);
 
         SetActive(baseScene, false);
         SetActive(finalEmptyHallway, true);
@@ -361,6 +464,178 @@ public class HallwayLoopManager : MonoBehaviour
         PlayPhoneClipThenHangUp(noAnswer);
     }
 
+    private void CachePlayerReferences()
+    {
+        if (!autoFindPlayerReferences)
+            return;
+
+        GameObject playerObject = null;
+
+        if (playerRoot != null)
+            playerObject = playerRoot.gameObject;
+        else
+            playerObject = GameObject.FindGameObjectWithTag("Player");
+
+        if (playerObject == null)
+            return;
+
+        if (playerRoot == null)
+            playerRoot = playerObject.transform;
+
+        if (playerCharacterController == null)
+            playerCharacterController = playerObject.GetComponent<CharacterController>();
+
+        if (firstPersonController == null)
+            firstPersonController = playerObject.GetComponent<FirstPersonController>();
+
+        if (playerMovementScript == null && firstPersonController != null)
+            playerMovementScript = firstPersonController;
+
+        if (playerRigidbody == null)
+            playerRigidbody = playerObject.GetComponent<Rigidbody>();
+
+        if (cameraController == null)
+            cameraController = playerObject.GetComponentInChildren<CameraController>();
+
+        if (headBobTransformToFreeze == null && cameraController != null)
+            headBobTransformToFreeze = cameraController.transform;
+    }
+
+    private void LockPlayerMovement()
+    {
+        if (loop3PlayerMovementLocked)
+            return;
+
+        CachePlayerReferences();
+
+        loop3PlayerMovementLocked = true;
+
+        if (playerRoot != null)
+        {
+            loop3LockedPlayerPosition = playerRoot.position;
+            loop3LockedPlayerRotation = playerRoot.rotation;
+        }
+
+        if (headBobTransformToFreeze != null)
+            lockedHeadBobLocalPosition = headBobTransformToFreeze.localPosition;
+
+        if (playerMovementScript != null)
+        {
+            playerMovementScriptWasEnabled = playerMovementScript.enabled;
+            playerMovementScript.enabled = false;
+        }
+
+        if (firstPersonController != null)
+        {
+            firstPersonControllerWasEnabled = firstPersonController.enabled;
+            firstPersonController.enabled = false;
+        }
+
+        if (extraMovementScriptsToDisable != null)
+        {
+            extraMovementScriptsWereEnabled = new bool[extraMovementScriptsToDisable.Length];
+
+            for (int i = 0; i < extraMovementScriptsToDisable.Length; i++)
+            {
+                if (extraMovementScriptsToDisable[i] != null)
+                {
+                    extraMovementScriptsWereEnabled[i] = extraMovementScriptsToDisable[i].enabled;
+                    extraMovementScriptsToDisable[i].enabled = false;
+                }
+            }
+        }
+
+        if (playerCharacterController != null)
+        {
+            playerCharacterControllerWasEnabled = playerCharacterController.enabled;
+            playerCharacterController.enabled = false;
+        }
+
+        if (playerRigidbody != null)
+        {
+            playerRigidbodyWasKinematic = playerRigidbody.isKinematic;
+
+#if UNITY_6000_0_OR_NEWER
+            playerRigidbody.linearVelocity = Vector3.zero;
+#else
+            playerRigidbody.velocity = Vector3.zero;
+#endif
+
+            playerRigidbody.angularVelocity = Vector3.zero;
+            playerRigidbody.isKinematic = true;
+        }
+
+        Debug.Log("Loop 3: Player movement locked.");
+    }
+
+    private void MaintainLoop3PlayerLock()
+    {
+        if (!loop3PlayerMovementLocked)
+            return;
+
+        if (playerRoot != null)
+        {
+            playerRoot.position = loop3LockedPlayerPosition;
+            playerRoot.rotation = loop3LockedPlayerRotation;
+        }
+
+        // This prevents headbob/sway from still showing while the player is locked.
+        // Rotation is still controlled by ForcedLook, but local position is frozen.
+        if (headBobTransformToFreeze != null)
+            headBobTransformToFreeze.localPosition = lockedHeadBobLocalPosition;
+    }
+
+    private void UnlockPlayerMovement()
+    {
+        if (!loop3PlayerMovementLocked)
+            return;
+
+        loop3PlayerMovementLocked = false;
+
+        if (playerRigidbody != null)
+        {
+            playerRigidbody.isKinematic = playerRigidbodyWasKinematic;
+
+#if UNITY_6000_0_OR_NEWER
+            playerRigidbody.linearVelocity = Vector3.zero;
+#else
+            playerRigidbody.velocity = Vector3.zero;
+#endif
+
+            playerRigidbody.angularVelocity = Vector3.zero;
+        }
+
+        if (playerCharacterController != null)
+            playerCharacterController.enabled = playerCharacterControllerWasEnabled;
+
+        if (extraMovementScriptsToDisable != null && extraMovementScriptsWereEnabled != null)
+        {
+            int count = Mathf.Min(extraMovementScriptsToDisable.Length, extraMovementScriptsWereEnabled.Length);
+
+            for (int i = 0; i < count; i++)
+            {
+                if (extraMovementScriptsToDisable[i] != null)
+                    extraMovementScriptsToDisable[i].enabled = extraMovementScriptsWereEnabled[i];
+            }
+        }
+
+        if (firstPersonController != null)
+            firstPersonController.enabled = firstPersonControllerWasEnabled;
+
+        if (playerMovementScript != null)
+            playerMovementScript.enabled = playerMovementScriptWasEnabled;
+
+        Debug.Log("Loop 3: Player movement unlocked.");
+    }
+
+    private void FinishLoop3MonsterForcedLook()
+    {
+        if (cameraController != null)
+            cameraController.SetForceLooking(false);
+
+        UnlockPlayerMovement();
+    }
+
     public void PlayerReachedFigure()
     {
         if (loopCount != 3 || playerReachedFigure)
@@ -387,6 +662,14 @@ public class HallwayLoopManager : MonoBehaviour
         SetAllLights(true);
         SetActive(loop3Monster, true);
 
+        if (loop3MonsterAnimator == null && loop3Monster != null)
+            loop3MonsterAnimator = loop3Monster.GetComponent<Animator>();
+
+        if (loop3MonsterAnimator != null && !string.IsNullOrEmpty(loop3BackwardWalkStateName))
+            loop3MonsterAnimator.Play(loop3BackwardWalkStateName, 0, 0f);
+
+        StartLoop3MonsterDisappear();
+
         ShowTVNews();
         LockDoor();
 
@@ -394,10 +677,39 @@ public class HallwayLoopManager : MonoBehaviour
 
         StartLoop3BroadcastInterruptions();
 
+        LockPlayerMovement();
+
         if (forceLookBehind && loop3ForcedLook != null)
             loop3ForcedLook.StartForcedLook();
 
-        Debug.Log("Loop 3: Lights back on. Broadcast now gets interrupted by look behind you.");
+        Debug.Log("Loop 3: Lights back on. Player locked, monster animation started, and broadcast is interrupted by look behind you.");
+    }
+
+    private void StartLoop3MonsterDisappear()
+    {
+        StopLoop3MonsterDisappear();
+        loop3MonsterDisappearCoroutine = StartCoroutine(Loop3MonsterDisappearRoutine());
+    }
+
+    private void StopLoop3MonsterDisappear()
+    {
+        if (loop3MonsterDisappearCoroutine != null)
+        {
+            StopCoroutine(loop3MonsterDisappearCoroutine);
+            loop3MonsterDisappearCoroutine = null;
+        }
+    }
+
+    private IEnumerator Loop3MonsterDisappearRoutine()
+    {
+        yield return new WaitForSeconds(loop3MonsterDisappearDelay);
+
+        SetActive(loop3Monster, false);
+
+        // Let the player move again after the monster's backward-walk moment ends.
+        FinishLoop3MonsterForcedLook();
+
+        loop3MonsterDisappearCoroutine = null;
     }
 
     public void LookedBehind()
@@ -407,10 +719,9 @@ public class HallwayLoopManager : MonoBehaviour
             if (!waitingForLookBehind)
                 return;
 
-            if (playerMovementScript != null)
-                playerMovementScript.enabled = true;
-
-            if (cameraController != null)
+            // Movement is unlocked by Loop3MonsterDisappearRoutine after loop3MonsterDisappearDelay.
+            // This prevents the player from moving during the forced-look / monster animation.
+            if (!loop3PlayerMovementLocked && cameraController != null)
                 cameraController.SetForceLooking(false);
 
             StopLoop3BroadcastInterruptions();
@@ -475,12 +786,30 @@ public class HallwayLoopManager : MonoBehaviour
         if (monsterChaseAnimator == null && monsterChase != null)
             monsterChaseAnimator = monsterChase.GetComponent<Animator>();
 
-        if (monsterChaseAnimator != null && !string.IsNullOrEmpty(monsterChaseAnimationTrigger))
+        if (monsterChaseAnimator != null &&
+            !string.IsNullOrEmpty(monsterChaseAnimationTrigger))
+        {
             monsterChaseAnimator.SetTrigger(monsterChaseAnimationTrigger);
+        }
+
+        // Show "RUN" text immediately.
+        SetActive(runText, true);
+
+        // Monster scary moan immediately, then thudding after the moan finishes.
+        StartLoop6MoanThenThudding();
+
+        // Delay the chase music so it plays 1 second before the red lights/camera shake moment.
+        StartLoop6ChaseMusicDelay();
+
+        // Delay the red lights.
+        StartLoop6RedLightsDelay();
+
+        // Delay camera shake.
+        StartLoop6CameraShakeDelay();
 
         StartChase();
 
-        Debug.Log("Loop 6: LookedAtMonster raycast hit. Chase animation triggered.");
+        Debug.Log("Loop 6: Chase animation started. Music, red lights, and camera shake are delayed.");
     }
 
     private void StartChase()
@@ -490,14 +819,168 @@ public class HallwayLoopManager : MonoBehaviour
         SetActive(monster, true);
         SetActive(monsterChase, true);
 
-        if (chaseMusic != null)
-            chaseMusic.Play();
-
         PlayPlayerLoopClip(finalLoop, true);
 
         UnlockDoor();
 
         Debug.Log("Loop 6: Chase started. Door unlocked.");
+    }
+
+    private void StartLoop6MoanThenThudding()
+    {
+        StopLoop6MoanThenThudding();
+        loop6ThuddingCoroutine = StartCoroutine(Loop6MoanThenThuddingRoutine());
+    }
+
+    private void StopLoop6MoanThenThudding()
+    {
+        if (loop6ThuddingCoroutine != null)
+        {
+            StopCoroutine(loop6ThuddingCoroutine);
+            loop6ThuddingCoroutine = null;
+        }
+    }
+
+    private IEnumerator Loop6MoanThenThuddingRoutine()
+    {
+        float delayBeforeThud = 0f;
+
+        if (scaryMoanSfx != null)
+        {
+            scaryMoanSfx.Stop();
+            scaryMoanSfx.loop = false;
+            scaryMoanSfx.time = 0f;
+            scaryMoanSfx.Play();
+
+            if (scaryMoanSfx.clip != null)
+                delayBeforeThud = scaryMoanSfx.clip.length;
+        }
+
+        // If thuddingDelayAfterMoan is 0 or higher, use that custom delay.
+        // If it is -1, wait for the full scaryMoanSfx clip length.
+        if (thuddingDelayAfterMoan >= 0f)
+            delayBeforeThud = thuddingDelayAfterMoan;
+
+        if (delayBeforeThud > 0f)
+            yield return new WaitForSeconds(delayBeforeThud);
+
+        PlayThuddingSfx();
+
+        loop6ThuddingCoroutine = null;
+    }
+
+    private void PlayThuddingSfx()
+    {
+        AudioSource source = thuddingSfx != null ? thuddingSfx : scaryMoanSfx;
+
+        if (source == null)
+        {
+            Debug.LogWarning("Loop 6 thudding SFX could not play because no AudioSource is assigned.");
+            return;
+        }
+
+        source.loop = false;
+        source.time = 0f;
+
+        if (thuddingClip != null)
+        {
+            source.PlayOneShot(thuddingClip);
+            return;
+        }
+
+        if (source.clip != null)
+        {
+            source.Stop();
+            source.Play();
+            return;
+        }
+
+        Debug.LogWarning("Loop 6 thudding SFX could not play because there is no thuddingClip and the AudioSource has no clip.");
+    }
+
+    private void StartLoop6ChaseMusicDelay()
+    {
+        StopLoop6ChaseMusic();
+
+        float musicDelay = Mathf.Max(0f, redLightsDelay - musicLeadTime);
+        loop6ChaseMusicCoroutine = StartCoroutine(Loop6ChaseMusicDelayRoutine(musicDelay));
+    }
+
+    private void StopLoop6ChaseMusic()
+    {
+        if (loop6ChaseMusicCoroutine != null)
+        {
+            StopCoroutine(loop6ChaseMusicCoroutine);
+            loop6ChaseMusicCoroutine = null;
+        }
+    }
+
+    private IEnumerator Loop6ChaseMusicDelayRoutine(float delay)
+    {
+        yield return new WaitForSeconds(delay);
+
+        if (chaseMusic != null)
+        {
+            chaseMusic.Stop();
+            chaseMusic.loop = true;
+            chaseMusic.time = 0f;
+            chaseMusic.Play();
+        }
+
+        loop6ChaseMusicCoroutine = null;
+    }
+
+    private void StartLoop6RedLightsDelay()
+    {
+        StopLoop6RedLights();
+        loop6RedLightsCoroutine = StartCoroutine(Loop6RedLightsDelayRoutine());
+    }
+
+    private void StopLoop6RedLights()
+    {
+        if (loop6RedLightsCoroutine != null)
+        {
+            StopCoroutine(loop6RedLightsCoroutine);
+            loop6RedLightsCoroutine = null;
+        }
+    }
+
+    private IEnumerator Loop6RedLightsDelayRoutine()
+    {
+        yield return new WaitForSeconds(redLightsDelay);
+
+        SetActive(lightsOn, false);
+        SetActive(lightsOff, false);
+        SetActive(redLights, true);
+        SetActive(backLightOn, false);
+        SetActive(backLightOff, false);
+
+        loop6RedLightsCoroutine = null;
+    }
+
+    private void StartLoop6CameraShakeDelay()
+    {
+        StopLoop6CameraShake();
+        loop6CameraShakeCoroutine = StartCoroutine(Loop6CameraShakeDelayRoutine());
+    }
+
+    private void StopLoop6CameraShake()
+    {
+        if (loop6CameraShakeCoroutine != null)
+        {
+            StopCoroutine(loop6CameraShakeCoroutine);
+            loop6CameraShakeCoroutine = null;
+        }
+    }
+
+    private IEnumerator Loop6CameraShakeDelayRoutine()
+    {
+        yield return new WaitForSeconds(cameraShakeDelay);
+
+        if (cameraShake != null)
+            cameraShake.StartShake(cameraShakeDuration, cameraShakeStrength, cameraShakeSpeed);
+
+        loop6CameraShakeCoroutine = null;
     }
 
     private void StartLoop3BroadcastInterruptions()
@@ -890,9 +1373,13 @@ public class HallwayLoopManager : MonoBehaviour
         StopLoop3BroadcastInterruptions();
         StopLoop4RandomPhoneClips();
         StopPhoneVoiceCoroutine();
+        StopLoop2ReportThenPhone();
+        StopLoop3MonsterDisappear();
+        StopLoop6CameraShake();
+        StopLoop6RedLights();
+        StopLoop6ChaseMusic();
 
-        if (playerMovementScript != null)
-            playerMovementScript.enabled = true;
+        UnlockPlayerMovement();
 
         if (cameraController != null)
             cameraController.SetForceLooking(false);
@@ -910,6 +1397,7 @@ public class HallwayLoopManager : MonoBehaviour
         SetActive(dirtyWalls, false);
         SetActive(bloodWalls, false);
         SetActive(finalEmptyHallway, false);
+        SetActive(runText, false);
 
         SetActive(tvStatic, false);
         SetActive(tvNews, false);
@@ -928,12 +1416,19 @@ public class HallwayLoopManager : MonoBehaviour
         StopLoop3BroadcastInterruptions();
         StopLoop4RandomPhoneClips();
         StopPhoneVoiceCoroutine();
+        StopLoop2ReportThenPhone();
+        StopLoop6CameraShake();
+        StopLoop6RedLights();
+        StopLoop6ChaseMusic();
+        StopLoop6MoanThenThudding();
 
         StopAudio(rainSfx);
         StopPhoneRinging();
         StopAudio(phoneVoiceSource);
         StopAudio(cryingSfx);
         StopAudio(chaseMusic);
+        StopAudio(scaryMoanSfx);
+        StopAudio(thuddingSfx);
         StopTVAudio();
 
         if (loopCount < 4 || loopCount > 7)
