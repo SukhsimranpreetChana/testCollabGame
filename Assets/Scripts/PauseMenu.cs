@@ -11,6 +11,8 @@ public class PauseMenu : MonoBehaviour
     public Behaviour playerMovementScript;
     public Behaviour cameraLookScript;
 
+    public string mainMenuSceneName = "MainMenu";
+
     private bool isPaused = false;
 
     private void Start()
@@ -86,6 +88,20 @@ public class PauseMenu : MonoBehaviour
 
         if (settingsPanel != null)
             settingsPanel.SetActive(true);
+    }
+
+    public void QuitToMainMenu()
+    {
+        Debug.Log("Returning to main menu...");
+
+        // Fix game being paused.
+        Time.timeScale = 1f;
+
+        // Unlock mouse before loading the menu.
+        Cursor.lockState = CursorLockMode.None;
+        Cursor.visible = true;
+
+        SceneManager.LoadScene(mainMenuSceneName);
     }
 
     public void BackFromSettings()

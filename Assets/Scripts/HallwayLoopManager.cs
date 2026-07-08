@@ -43,6 +43,10 @@ public class HallwayLoopManager : MonoBehaviour
     public float cameraShakeStrength = 0.1f;
     public float cameraShakeSpeed = 30f;
 
+    [Header("Loop 6 Chase Music Fade")]
+    [Tooltip("How long the chase music takes to fade out when entering Loop 7.")]
+    public float chaseMusicFadeOutTime = 2f;
+
     [Header("Phone Audio Source")]
     public AudioSource phoneVoiceSource;
 
@@ -181,7 +185,9 @@ public class HallwayLoopManager : MonoBehaviour
     private Coroutine loop6ThuddingCoroutine;
     private Coroutine loop2ReportCoroutine;
     private Coroutine loop3MonsterDisappearCoroutine;
+    private Coroutine chaseMusicFadeCoroutine;
     private AudioClip originalPhoneRingingClip;
+    private bool preserveChaseMusicForLoop7Fade = false;
 
     private void Start()
     {
@@ -199,7 +205,13 @@ public class HallwayLoopManager : MonoBehaviour
 
     public void NextLoop()
     {
+        int previousLoop = loopCount;
         loopCount++;
+
+        bool enteringLoop7FromChase = previousLoop == 6 && loopCount == 7;
+
+        if (enteringLoop7FromChase)
+            preserveChaseMusicForLoop7Fade = true;
 
         chaseStarted = false;
         playerReachedFigure = false;
@@ -230,6 +242,12 @@ public class HallwayLoopManager : MonoBehaviour
 
         Debug.Log("Loop #" + loopCount);
         ApplyLoop();
+
+        if (enteringLoop7FromChase)
+        {
+            preserveChaseMusicForLoop7Fade = false;
+            StartChaseMusicFadeOut();
+        }
     }
 
     private void ApplyLoop()
@@ -930,6 +948,59 @@ public class HallwayLoopManager : MonoBehaviour
         loop6ChaseMusicCoroutine = null;
     }
 
+    private void StartChaseMusicFadeOut()
+    {
+        StopChaseMusicFadeOut();
+
+        if (chaseMusic == null || !chaseMusic.isPlaying)
+            return;
+
+        chaseMusicFadeCoroutine = StartCoroutine(ChaseMusicFadeOutRoutine());
+    }
+
+    private void StopChaseMusicFadeOut()
+    {
+        if (chaseMusicFadeCoroutine != null)
+        {
+            StopCoroutine(chaseMusicFadeCoroutine);
+            chaseMusicFadeCoroutine = null;
+        }
+    }
+
+    private IEnumerator ChaseMusicFadeOutRoutine()
+    {
+        if (chaseMusic == null)
+        {
+            chaseMusicFadeCoroutine = null;
+            yield break;
+        }
+
+        float startVolume = chaseMusic.volume;
+        float fadeTime = Mathf.Max(0.01f, chaseMusicFadeOutTime);
+        float timer = 0f;
+
+        while (timer < fadeTime && chaseMusic != null)
+        {
+            timer += Time.unscaledDeltaTime;
+
+            chaseMusic.volume = Mathf.Lerp(
+                startVolume,
+                0f,
+                timer / fadeTime
+            );
+
+            yield return null;
+        }
+
+        if (chaseMusic != null)
+        {
+            chaseMusic.Stop();
+            chaseMusic.volume = startVolume;
+        }
+
+        chaseMusicFadeCoroutine = null;
+    }
+
     private void StartLoop6RedLightsDelay()
     {
         StopLoop6RedLights();
@@ -1367,6 +1438,12 @@ public class HallwayLoopManager : MonoBehaviour
         }
     }
 
+    public void ForceLoop(int newLoop)
+    {
+        loopCount = newLoop;
+        ApplyLoop();
+    }
+
     private void ResetEverything()
     {
         StopBackLightFlicker();
@@ -1426,7 +1503,13 @@ public class HallwayLoopManager : MonoBehaviour
         StopPhoneRinging();
         StopAudio(phoneVoiceSource);
         StopAudio(cryingSfx);
-        StopAudio(chaseMusic);
+
+        if (!preserveChaseMusicForLoop7Fade)
+        {
+            StopChaseMusicFadeOut();
+            StopAudio(chaseMusic);
+        }
+
         StopAudio(scaryMoanSfx);
         StopAudio(thuddingSfx);
         StopTVAudio();

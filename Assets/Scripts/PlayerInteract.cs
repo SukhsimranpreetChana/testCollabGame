@@ -36,7 +36,12 @@ public class PlayerInteract : MonoBehaviour
             if (hitObject.CompareTag("Interactable"))
             {
                 ShowTutorial();
+                text.SetActive(true);
 
+            }
+            else
+            {
+                text.SetActive(false);
             }
 
             if (Input.GetKeyDown(KeyCode.E))

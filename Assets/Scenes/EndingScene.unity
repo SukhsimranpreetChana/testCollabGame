@@ -4255,6 +4255,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   loopManager: {fileID: 1143888021}
+  tutorialText: {fileID: 0}
 --- !u!65 &534758227
 BoxCollider:
   m_ObjectHideFlags: 0
@@ -4633,6 +4634,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   loopManager: {fileID: 1143888021}
+  tutorialText: {fileID: 0}
 --- !u!82 &580315257
 AudioSource:
   m_ObjectHideFlags: 0
@@ -9989,6 +9991,19 @@ MonoBehaviour:
   phoneRinging: {fileID: 534758219}
   cryingSfx: {fileID: 149939202}
   chaseMusic: {fileID: 0}
+  scaryMoanSfx: {fileID: 0}
+  thuddingSfx: {fileID: 0}
+  thuddingClip: {fileID: 0}
+  thuddingDelayAfterMoan: -1
+  runText: {fileID: 0}
+  cameraShake: {fileID: 0}
+  redLightsDelay: 3.5
+  cameraShakeDelay: 3.5
+  musicLeadTime: 1
+  cameraShakeDuration: 1.5
+  cameraShakeStrength: 0.1
+  cameraShakeSpeed: 30
+  chaseMusicFadeOutTime: 2
   phoneVoiceSource: {fileID: 534758219}
   playerPhoneAudioSource: {fileID: 0}
   pickUpPhone: {fileID: 8300000, guid: d815aa59a14a3a440bf7327e2bbdf7e0, type: 3}
@@ -10016,7 +10031,17 @@ MonoBehaviour:
   forceLookBehind: 1
   monsterLookTarget: {fileID: 579491684}
   playerMovementScript: {fileID: 0}
+  firstPersonController: {fileID: 0}
+  extraMovementScriptsToDisable: []
+  playerCharacterController: {fileID: 0}
+  playerRigidbody: {fileID: 0}
+  playerRoot: {fileID: 0}
   cameraController: {fileID: 0}
+  autoFindPlayerReferences: 1
+  headBobTransformToFreeze: {fileID: 0}
+  loop3MonsterAnimator: {fileID: 0}
+  loop3BackwardWalkStateName: BackwardWalk
+  loop3MonsterDisappearDelay: 3
   playerCamera: {fileID: 0}
   lookedAtMonster: {fileID: 1527838343}
   lookedAtMonsterName: LookedAtMonster
@@ -10040,6 +10065,7 @@ MonoBehaviour:
   tvNews: {fileID: 1064291813}
   tvOff: {fileID: 232528701}
   phoneRoot: {fileID: 0}
+  phoneRoot2: {fileID: 0}
   lightsOn: {fileID: 659758724}
   lightsOff: {fileID: 739132403}
   redLights: {fileID: 590350430}
@@ -11254,7 +11280,7 @@ MonoBehaviour:
   secondReport: {fileID: 8300000, guid: bdf217ec8ee081941a901bf95d9ed25f, type: 3}
   callReport: {fileID: 8300000, guid: 4c6ea83659d338c4e968372431419213, type: 3}
   end: {fileID: 8300000, guid: 16bcda94b93f60e4dbca82b6521ffc3a, type: 3}
-  whyDidntYouAnswer: {fileID: 8300000, guid: 3fe25f19c9291df4bac2de8281e12162, type: 3}
+  whyDidntYouAnswer: {fileID: 8300000, guid: 5599b8ed7e9fbcd46a5948241317b561, type: 3}
   startDelay: 10
   whyDidntYouAnswerDelay: 75
 --- !u!1001 &1221278383
@@ -15633,7 +15659,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0cd44c1031e13a943bb63640046fad76, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  m_UiScaleMode: 0
+  m_UiScaleMode: 1
   m_ReferencePixelsPerUnit: 100
   m_ScaleFactor: 1
   m_ReferenceResolution: {x: 800, y: 600}
@@ -17355,7 +17381,7 @@ RectTransform:
   m_GameObject: {fileID: 1958786346}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_LocalScale: {x: 0.40656865, y: 0.40656865, z: 0.40656865}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 1773988652}

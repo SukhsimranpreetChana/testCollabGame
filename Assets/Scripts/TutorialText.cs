@@ -7,6 +7,16 @@ public class TutorialText : MonoBehaviour
     [Header("Tutorial Text")]
     public TextMeshProUGUI tutorialText;
 
+    [Header("Player")]
+    public CharacterController characterController;
+
+    [Tooltip("Drag your CameraController / camera look script here.")]
+    public Behaviour cameraMovementScript;
+
+    [Header("Beginning Player Lock")]
+    public bool lockPlayerAtBeginning = true;
+    public float beginningLockTime = 17f;
+
     [Header("Movement Tutorial")]
     public string movementMessage = "WASD to move";
     public float movementTutorialDelay = 2f;
@@ -29,6 +39,30 @@ public class TutorialText : MonoBehaviour
         SetTextAlpha(0f);
 
         StartCoroutine(MovementTutorialRoutine());
+
+        if (lockPlayerAtBeginning)
+            StartCoroutine(BeginningPlayerLockRoutine());
+    }
+
+    private IEnumerator BeginningPlayerLockRoutine()
+    {
+        // Disable player movement.
+        if (characterController != null)
+            characterController.enabled = false;
+
+        // Disable camera movement.
+        if (cameraMovementScript != null)
+            cameraMovementScript.enabled = false;
+
+        yield return new WaitForSeconds(beginningLockTime);
+
+        // Re-enable player movement.
+        if (characterController != null)
+            characterController.enabled = true;
+
+        // Re-enable camera movement.
+        if (cameraMovementScript != null)
+            cameraMovementScript.enabled = true;
     }
 
     private IEnumerator MovementTutorialRoutine()
